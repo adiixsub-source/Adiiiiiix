@@ -1,5 +1,5 @@
 --============================================--
--- Adiiiiiiix script v6
+-- Adiiiiiiix script v8
 -- SPEED MODES + GUARANTEED GRAB
 --============================================--
 
@@ -43,6 +43,10 @@ local T = {
         watch = "WATCH", stop = "STOP",
         watching = "Watching: ",
         stolen = "Stolen: ", dh = " DH",
+        cleanName = "AUTO CLEAN",
+        cleanDesc = "Auto job + broom + cleaning. Just press ON",
+        cleaned = "Cleaned: ", earned = " | Earned: ",
+        tp = "TP", tpDone = "Teleported to: ", refreshPlayers = "REFRESH",
         speed = "SPEED: ",
         speedSafe = "SAFE", speedFast = "FAST", speedUltra = "ULTRA",
     },
@@ -63,6 +67,10 @@ local T = {
         watch = "مراقبة", stop = "إيقاف",
         watching = "تراقب: ",
         stolen = "المسروق: ", dh = " درهم",
+        cleanName = "تنظيف أوتوماتيكي",
+        cleanDesc = "وظيفة + مكنسة + تنظيف تلقائي. فقط اضغط ON",
+        cleaned = "نظّف: ", earned = " | كسب: ",
+        tp = "انتقال", tpDone = "انتقلت إلى: ", refreshPlayers = "تحديث",
         speed = "السرعة: ",
         speedSafe = "آمنة", speedFast = "سريعة", speedUltra = "خارقة",
     }
@@ -220,6 +228,18 @@ end
 local toolsPage = makeTab("tabTools", 1)
 local serversPage = makeTab("tabServers", 2)
 local playersPage = makeTab("tabPlayers", 3)
+
+-- زر تحديث قائمة اللاعبين
+local pRefreshBtn = Instance.new("TextButton")
+pRefreshBtn.Size = UDim2.new(1, -4, 0, 30)
+pRefreshBtn.BackgroundColor3 = Color3.fromRGB(255, 200, 0)
+pRefreshBtn.TextColor3 = Color3.fromRGB(20, 20, 30)
+pRefreshBtn.Font = Enum.Font.GothamBold
+pRefreshBtn.TextSize = 12
+pRefreshBtn.Text = txt("refreshPlayers")
+pRefreshBtn.LayoutOrder = 0
+pRefreshBtn.Parent = playersPage
+Instance.new("UICorner", pRefreshBtn).CornerRadius = UDim.new(0, 8)
 
 -- شريط الحالة
 local statusBar = Instance.new("TextLabel")
@@ -407,6 +427,209 @@ task.spawn(function()
 end)
 
 --============================================--
+-- [إضافة] AUTO CLEAN — تنظيف أوتوماتيكي (SAFE)
+--============================================--
+local cleanOn = false
+local cleanedCount = 0
+local earnedTotal = 0
+local cleanReturnPos = nil
+
+local cleanCard = Instance.new("Frame")
+cleanCard.Size = UDim2.new(1, -4, 0, 96)
+cleanCard.BackgroundColor3 = Color3.fromRGB(32, 32, 46)
+cleanCard.BorderSizePixel = 0
+cleanCard.LayoutOrder = 2
+cleanCard.Parent = toolsPage
+Instance.new("UICorner", cleanCard).CornerRadius = UDim.new(0, 10)
+
+local cleanNameLbl = Instance.new("TextLabel")
+cleanNameLbl.Size = UDim2.new(1, -70, 0, 24)
+cleanNameLbl.Position = UDim2.new(0, 12, 0, 8)
+cleanNameLbl.BackgroundTransparency = 1
+cleanNameLbl.TextColor3 = Color3.new(1, 1, 1)
+cleanNameLbl.Font = Enum.Font.GothamBold
+cleanNameLbl.TextSize = 14
+cleanNameLbl.TextXAlignment = Enum.TextXAlignment.Left
+cleanNameLbl.Text = txt("cleanName")
+cleanNameLbl.Parent = cleanCard
+
+local cleanDescLbl = Instance.new("TextLabel")
+cleanDescLbl.Size = UDim2.new(1, -70, 0, 34)
+cleanDescLbl.Position = UDim2.new(0, 12, 0, 30)
+cleanDescLbl.BackgroundTransparency = 1
+cleanDescLbl.TextColor3 = Color3.fromRGB(150, 150, 160)
+cleanDescLbl.Font = Enum.Font.Gotham
+cleanDescLbl.TextSize = 11
+cleanDescLbl.TextWrapped = true
+cleanDescLbl.TextXAlignment = Enum.TextXAlignment.Left
+cleanDescLbl.TextYAlignment = Enum.TextYAlignment.Top
+cleanDescLbl.Text = txt("cleanDesc")
+cleanDescLbl.Parent = cleanCard
+
+local cleanToggle = Instance.new("TextButton")
+cleanToggle.Size = UDim2.new(0, 52, 0, 26)
+cleanToggle.Position = UDim2.new(1, -62, 0, 10)
+cleanToggle.BackgroundColor3 = Color3.fromRGB(120, 120, 120)
+cleanToggle.TextColor3 = Color3.new(1, 1, 1)
+cleanToggle.Font = Enum.Font.GothamBold
+cleanToggle.TextSize = 12
+cleanToggle.Text = "OFF"
+cleanToggle.Parent = cleanCard
+Instance.new("UICorner", cleanToggle).CornerRadius = UDim.new(1, 0)
+
+local cleanInfo = Instance.new("TextLabel")
+cleanInfo.Size = UDim2.new(1, -24, 0, 22)
+cleanInfo.Position = UDim2.new(0, 12, 0, 66)
+cleanInfo.BackgroundColor3 = Color3.fromRGB(14, 14, 20)
+cleanInfo.TextColor3 = Color3.fromRGB(0, 220, 150)
+cleanInfo.Font = Enum.Font.GothamBold
+cleanInfo.TextSize = 12
+cleanInfo.Parent = cleanCard
+Instance.new("UICorner", cleanInfo).CornerRadius = UDim.new(0, 6)
+
+local function updateCleanInfo()
+    cleanInfo.Text = txt("cleaned") .. cleanedCount .. txt("earned") .. earnedTotal .. txt("dh")
+end
+updateCleanInfo()
+
+local function getDirt()
+    local cj = workspace:FindFirstChild("GenericModels")
+        and workspace.GenericModels:FindFirstChild("CleaningJob")
+    local activeDirt = cj and cj:FindFirstChild("ActiveDirt")
+    if not activeDirt then return nil end
+    for _, obj in ipairs(activeDirt:GetDescendants()) do
+        if obj:IsA("BasePart") and obj.Name:find("DirtSpot") then
+            return obj
+        end
+    end
+    return nil
+end
+
+local function hasBroom()
+    local char = player.Character
+    local bp = player:FindFirstChild("Backpack")
+    return (char and char:FindFirstChild("Broom"))
+        or (bp and bp:FindFirstChild("Broom"))
+end
+
+local function equipBroom()
+    local char = player.Character
+    if not char then return false end
+    if char:FindFirstChild("Broom") then return true end
+    local bp = player:FindFirstChild("Backpack")
+    local broom = bp and bp:FindFirstChild("Broom")
+    if broom then
+        pcall(function() broom.Parent = char end)
+        task.wait(0.2)
+    end
+    return char:FindFirstChild("Broom") ~= nil
+end
+
+local function takeJob()
+    if hasBroom() then return equipBroom() end
+    local npc = workspace:FindFirstChild("GenericModels")
+        and workspace.GenericModels:FindFirstChild("CleaningJob")
+        and workspace.GenericModels.CleaningJob:FindFirstChild("CleaningCompany")
+        and workspace.GenericModels.CleaningJob.CleaningCompany:FindFirstChild("JobNPC")
+    if not npc then return false end
+    local char = player.Character
+    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+    local npcPart = npc:FindFirstChildWhichIsA("BasePart", true)
+    if not (hrp and npcPart) then return false end
+    hrp.CFrame = npcPart.CFrame + Vector3.new(0, 3, 3)
+    task.wait(0.4)
+    local prompt = npc:FindFirstChildWhichIsA("ProximityPrompt", true)
+    if prompt then
+        pcall(function()
+            prompt.HoldDuration = 0
+            prompt.MaxActivationDistance = 20
+        end)
+        pcall(function() fireproximityprompt(prompt) end)
+        task.wait(0.5)
+        pcall(function() fireproximityprompt(prompt) end)
+    end
+    local t0 = os.clock()
+    while os.clock() - t0 < 5 do
+        if hasBroom() then break end
+        task.wait(0.3)
+    end
+    return equipBroom()
+end
+
+cleanToggle.MouseButton1Click:Connect(function()
+    cleanOn = not cleanOn
+    cleanToggle.Text = cleanOn and "ON" or "OFF"
+    cleanToggle.BackgroundColor3 = cleanOn and Color3.fromRGB(0, 170, 90)
+        or Color3.fromRGB(120, 120, 120)
+
+    if cleanOn then
+        task.spawn(function()
+            local char = player.Character
+            local hrp = char and char:FindFirstChild("HumanoidRootPart")
+            if hrp then cleanReturnPos = hrp.CFrame end
+
+            statusBar.Text = "AUTO CLEAN: getting job + broom..."
+            if not takeJob() then
+                statusBar.Text = "AUTO CLEAN: failed to get broom!"
+                cleanOn = false
+                cleanToggle.Text = "OFF"
+                cleanToggle.BackgroundColor3 = Color3.fromRGB(120, 120, 120)
+                if cleanReturnPos and hrp and hrp.Parent then
+                    pcall(function() hrp.CFrame = cleanReturnPos end)
+                end
+                task.wait(2)
+                updateStatus()
+                return
+            end
+            updateStatus()
+
+            while cleanOn and gui.Parent do
+                char = player.Character
+                hrp = char and char:FindFirstChild("HumanoidRootPart")
+                if not hrp then task.wait(1) continue end
+                if not equipBroom() then task.wait(1) continue end
+
+                local dirt = getDirt()
+                if not dirt then task.wait(0.8) continue end
+
+                local before = coins.Value
+                local t0 = os.clock()
+                local success = false
+                while os.clock() - t0 < 3 and cleanOn do
+                    if dirt.Parent and hrp.Parent then
+                        pcall(function()
+                            hrp.CFrame = dirt.CFrame + Vector3.new(0, 2.5, 0)
+                            hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+                        end)
+                    end
+                    if not dirt.Parent or coins.Value > before then
+                        success = true
+                        break
+                    end
+                    task.wait(0.1)
+                end
+
+                if success and coins.Value > before then
+                    cleanedCount = cleanedCount + 1
+                    earnedTotal = earnedTotal + (coins.Value - before)
+                    updateCleanInfo()
+                elseif not success then
+                    task.wait(1.5)
+                end
+                task.wait(0.15)
+            end
+
+            if cleanReturnPos then
+                local c = player.Character
+                local h = c and c:FindFirstChild("HumanoidRootPart")
+                if h then pcall(function() h.CFrame = cleanReturnPos end) end
+            end
+            updateStatus()
+        end)
+    end
+end)
+
+--============================================--
 -- TAB 2: SERVERS
 --============================================--
 local refreshBtn = Instance.new("TextButton")
@@ -542,7 +765,7 @@ local function buildPlayerList()
             Instance.new("UICorner", row).CornerRadius = UDim.new(0, 10)
 
             local lbl = Instance.new("TextLabel")
-            lbl.Size = UDim2.new(1, -80, 1, 0)
+            lbl.Size = UDim2.new(1, -140, 1, 0)
             lbl.Position = UDim2.new(0, 12, 0, 0)
             lbl.BackgroundTransparency = 1
             lbl.TextColor3 = Color3.new(1, 1, 1)
@@ -554,7 +777,7 @@ local function buildPlayerList()
 
             local watchBtn = Instance.new("TextButton")
             watchBtn.Size = UDim2.new(0, 60, 0, 28)
-            watchBtn.Position = UDim2.new(1, -68, 0.5, -14)
+            watchBtn.Position = UDim2.new(1, -132, 0.5, -14)
             watchBtn.BackgroundColor3 = Color3.fromRGB(150, 60, 180)
             watchBtn.TextColor3 = Color3.new(1, 1, 1)
             watchBtn.Font = Enum.Font.GothamBold
@@ -564,6 +787,31 @@ local function buildPlayerList()
             Instance.new("UICorner", watchBtn).CornerRadius = UDim.new(0, 8)
 
             local targetPl = pl
+            local tpBtn = Instance.new("TextButton")
+            tpBtn.Size = UDim2.new(0, 60, 0, 28)
+            tpBtn.Position = UDim2.new(1, -68, 0.5, -14)
+            tpBtn.BackgroundColor3 = Color3.fromRGB(0, 140, 220)
+            tpBtn.TextColor3 = Color3.new(1, 1, 1)
+            tpBtn.Font = Enum.Font.GothamBold
+            tpBtn.TextSize = 11
+            tpBtn.Text = txt("tp")
+            tpBtn.Parent = row
+            Instance.new("UICorner", tpBtn).CornerRadius = UDim.new(0, 8)
+
+            tpBtn.MouseButton1Click:Connect(function()
+                local myChar = player.Character
+                local myHrp = myChar and myChar:FindFirstChild("HumanoidRootPart")
+                local tChar = targetPl.Character
+                local tHrp = tChar and tChar:FindFirstChild("HumanoidRootPart")
+                if myHrp and tHrp then
+                    pcall(function()
+                        myHrp.CFrame = tHrp.CFrame + Vector3.new(0, 3, 3)
+                    end)
+                    statusBar.Text = txt("tpDone") .. targetPl.DisplayName
+                    task.wait(1.5)
+                    updateStatus()
+                end
+            end)
             watchBtn.MouseButton1Click:Connect(function()
                 if watchTarget == targetPl then
                     stopWatch()
@@ -605,6 +853,7 @@ task.spawn(function()
     end
 end)
 
+pRefreshBtn.MouseButton1Click:Connect(buildPlayerList)
 tabs["tabPlayers"].MouseButton1Click:Connect(buildPlayerList)
 buildPlayerList()
 
@@ -622,9 +871,13 @@ langBtn.MouseButton1Click:Connect(function()
     magnetDesc.Text = txt("magnetDesc")
     refreshSpeedBtn()
     updateStatus()
+    cleanNameLbl.Text = txt("cleanName")
+    cleanDescLbl.Text = txt("cleanDesc")
+    updateCleanInfo()
+    pRefreshBtn.Text = txt("refreshPlayers")
     refreshBtn.Text = txt("refresh")
     if #lastServers > 0 then renderServers(lastServers) end
     buildPlayerList()
 end)
 
-print("[Adiiiiiiix script v6] Ready! Speed modes + guaranteed grab")
+print("[Adiiiiiiix script v8] + AUTO CLEAN + TP + REFRESH")
