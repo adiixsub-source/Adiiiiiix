@@ -82,7 +82,7 @@ local T = {
         title = "سكريبت Adiiiiiiix",
         tabFarm = "المزرعة", tabPlayers = "لاعبين", tabServers = "سيرفرات", tabSecurity = "الحماية",
         magnetName = "مغناطيس الكوينز", magnetDesc = "ينتقل للكاش، يأخذه، ويرجعك — مضمون",
-        stealthName = "سرقة مخفية", stealthDesc = "يسرق من تحت الأرضية — مثبّت ولا يسقط",
+        stealthName = "سرقة مخفية", stealthDesc = "يختبئ تحت الأرض قرب السطح ويسرق — مخفي ومضمون",
         cleanName = "تنظيف أوتوماتيكي", cleanDesc = "وظيفة + مكنسة + تنظيف بضغطة واحدة",
         xoName = "XO فوز تلقائي", xoDesc = "يلعب إكس-أو بذكاء ويربح تلقائياً",
         espName = "كشف الإدارة", espDesc = "رتب الإدارة الحقيقية فوق رؤوسهم",
@@ -101,7 +101,7 @@ local T = {
         title = "Adiiiiiiix script",
         tabFarm = "FARM", tabPlayers = "PLAYERS", tabServers = "SERVERS", tabSecurity = "SECURITY",
         magnetName = "COIN MAGNET", magnetDesc = "Teleports, grabs cash, returns — guaranteed",
-        stealthName = "STEALTH GRAB", stealthDesc = "Grabs under the floor — anchored, no falling",
+        stealthName = "STEALTH GRAB", stealthDesc = "Hides just under the floor and grabs — hidden, guaranteed",
         cleanName = "AUTO CLEAN", cleanDesc = "Auto job + broom + cleaning, one press",
         xoName = "XO AUTO-WIN", xoDesc = "Plays Tic-Tac-Toe smart and wins",
         espName = "STAFF ESP", espDesc = "Real HD Admin ranks above their heads",
@@ -537,6 +537,8 @@ local function fireCash(part)
 end
 
 --===== 1) سرقة مخفية (النسخة المضمونة — لا يرجع حتى يحمل) =====--
+local STEALTH_DEPTH = 4.5  -- عمق الاختباء تحت الأرض (قريب من السطح ليصل للمال، ومخفي)
+
 local stealthCard, stealthSw = makeCard(farmPage, "stealthName", "stealthDesc", Color3.fromRGB(180, 120, 255), 126)
 local stealthInfo = makeCounter(stealthCard, Color3.fromRGB(180, 120, 255), 64)
 local stealthOn = false
@@ -620,7 +622,7 @@ local function stealthCycle()
         if not (target and target.Parent) then continue end
 
         local v = coins.Value
-        local underPos = target.CFrame - Vector3.new(0, 8.5, 0)
+        local underPos = target.CFrame - Vector3.new(0, STEALTH_DEPTH, 0)
 
         pcall(function()
             hrp.CFrame = underPos
