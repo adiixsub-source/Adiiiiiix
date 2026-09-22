@@ -1,5 +1,5 @@
 --====================================================--
---  Adiiiiiiix script v13 — نسخة الهاتف المبسطة
+--  Adiiiiiiix script v14 — السرقة المخفية المضمونة
 --  AR/EN بدون تخربط | حجم يتكيف مع الشاشة | صفر أخطاء
 --====================================================--
 
@@ -123,7 +123,7 @@ local function align() return isAr() and Enum.TextXAlignment.Right or Enum.TextX
 
 --===== الواجهة =====--
 local gui = Instance.new("ScreenGui")
-gui.Name = "AdiiiiiiixScriptV13"
+gui.Name = "AdiiiiiiixScriptV14"
 gui.ResetOnSpawn = false
 gui.DisplayOrder = 999
 pcall(function() gui.Parent = game:GetService("CoreGui") end)
@@ -506,7 +506,7 @@ end
 --  تبويب المزرعة
 --====================================================--
 local avoidOn = false
-local cashTotal, stealthTotal, cleanTotal, earnedTotal, xoTotal = 0, 0, 0, 0, 0
+local cashTotal, cleanTotal, earnedTotal, xoTotal = 0, 0, 0, 0
 
 local function getChar()
     local char = player.Character
@@ -536,60 +536,7 @@ local function fireCash(part)
     end)
 end
 
---===== 1) مغناطيس الكوينز =====--
-local magnetCard, magnetSw = makeCard(farmPage, "magnetName", "magnetDesc", Color3.fromRGB(0, 220, 130), 126)
-local magnetInfo = makeCounter(magnetCard, Color3.fromRGB(0, 220, 130), 64)
-local magnetOn = false
-
-local function renderMagnet()
-    if isAr() then
-        magnetInfo.Text = "المسروق: " .. cashTotal .. " درهم | +" .. earnedTotal .. " درهم"
-    else
-        magnetInfo.Text = "Stolen: " .. cashTotal .. " DH | +" .. earnedTotal .. " DH"
-    end
-end
-renderMagnet()
-regRenderer(renderMagnet)
-
-magnetSw.onClick(function(s) magnetOn = s end)
-local magnetSpeed = SPEED_LEVELS[1]
-addSpeedRow(magnetCard, 92, 1, function(i) magnetSpeed = SPEED_LEVELS[i] end)
-
-local function magnetCycle()
-    if not magnetOn then task.wait(0.4) return end
-    if getNearbyStaff(50) and avoidOn then task.wait(0.5) return end
-    local _, hrp = getChar()
-    if not hrp then task.wait(0.5) return end
-    local sp = magnetSpeed
-    local origin = hrp.CFrame
-    for _, c in ipairs(findCash()) do
-        if not magnetOn then break end
-        if not (c and c.Parent) then continue end
-        local v = coins.Value
-        pcall(function() hrp.CFrame = c.CFrame + Vector3.new(0, 3, 0) end)
-        task.wait(sp.tpWait)
-        fireCash(c)
-        local t0 = tick()
-        while coins.Value == v and tick() - t0 < sp.timeout do
-            task.wait(sp.fireGap)
-            if not (c and c.Parent) then break end
-            fireCash(c)
-        end
-        if coins.Value > v then
-            cashTotal += 1
-            earnedTotal += (coins.Value - v)
-            renderMagnet()
-        end
-    end
-    pcall(function()
-        local _, h2 = getChar()
-        if h2 then h2.CFrame = origin end
-    end)
-    task.wait(sp.cooldown)
-end
-task.spawn(function() while true do pcall(magnetCycle) task.wait(0.1) end end)
-
---===== 2) سرقة مخفية (مُصلحة: تثبيت + لا سقوط أبداً) =====--
+--===== 1) سرقة مخفية (النسخة المضمونة — لا يرجع حتى يحمل) =====--
 local stealthCard, stealthSw = makeCard(farmPage, "stealthName", "stealthDesc", Color3.fromRGB(180, 120, 255), 126)
 local stealthInfo = makeCounter(stealthCard, Color3.fromRGB(180, 120, 255), 64)
 local stealthOn = false
@@ -598,28 +545,57 @@ local stealthAnchored = false
 
 local function renderStealth()
     if isAr() then
-        stealthInfo.Text = "سرقات خفية: " .. stealthTotal
+        stealthInfo.Text = "سرقات: " .. cashTotal .. " | +" .. earnedTotal .. " درهم"
     else
-        stealthInfo.Text = "Stealth grabs: " .. stealthTotal
+        stealthInfo.Text = "Grabs: " .. cashTotal .. " | +" .. earnedTotal .. " DH"
     end
 end
 renderStealth()
 regRenderer(renderStealth)
 
-local function stealthCleanup(origin)
+-- noclip يشتغل ويبقى حتى بعد الرجوع فوق الأرض
+local function stealthNoclipOn()
+    if stealthNoclip then return end
+    stealthNoclip = RunService.Stepped:Connect(function()
+        pcall(function()
+            local char = player.Character
+            if char then
+                for _, p in ipairs(char:GetDescendants()) do
+                    if p:IsA("BasePart") then p.CanCollide = false end
+                end
+            end
+        end)
+    end)
+end
+
+local function stealthNoclipOff()
+    if stealthNoclip then
+        pcall(function() stealthNoclip:Disconnect() end)
+        stealthNoclip = nil
+    end
     pcall(function()
-        if stealthNoclip then stealthNoclip:Disconnect() stealthNoclip = nil end
-        local _, h2 = getChar()
-        if h2 then
-            if stealthAnchored then h2.Anchored = false stealthAnchored = false end
-            if origin then h2.CFrame = origin end
+        local char = player.Character
+        if char then
+            for _, p in ipairs(char:GetDescendants()) do
+                if p:IsA("BasePart") and p.Name ~= "HumanoidRootPart" then
+                    p.CanCollide = true
+                end
+            end
         end
     end)
 end
 
+local function stealthSafeOff()
+    pcall(function()
+        local _, h = getChar()
+        if h and stealthAnchored then h.Anchored = false stealthAnchored = false end
+    end)
+    stealthNoclipOff()
+end
+
 stealthSw.onClick(function(s)
     stealthOn = s
-    if not s then stealthCleanup(nil) end
+    if not s then stealthSafeOff() end
 end)
 local stealthSpeed = SPEED_LEVELS[1]
 addSpeedRow(stealthCard, 92, 1, function(i) stealthSpeed = SPEED_LEVELS[i] end)
@@ -629,70 +605,88 @@ local function stealthCycle()
     if getNearbyStaff(50) and avoidOn then task.wait(0.5) return end
     local char, hrp = getChar()
     if not hrp then task.wait(0.5) return end
+
+    local list = findCash()
+    if #list == 0 then task.wait(0.6) return end
+
     local sp = stealthSpeed
     local origin = hrp.CFrame
     local originY = hrp.Position.Y
-    local target
-    for _, c in ipairs(findCash()) do target = c break end
-    if not (target and target.Parent) then task.wait(sp.cooldown) return end
 
-    local v = coins.Value
-    local underPos = target.CFrame - Vector3.new(0, 8.5, 0)
+    stealthNoclipOn()
 
-    -- noclip + تثبيت كامل: الشخصية لا تسقط مهما كانت السرعة
-    if stealthNoclip then pcall(function() stealthNoclip:Disconnect() end) stealthNoclip = nil end
-    stealthNoclip = RunService.Stepped:Connect(function()
+    for _, target in ipairs(list) do
+        if not stealthOn then break end
+        if not (target and target.Parent) then continue end
+
+        local v = coins.Value
+        local underPos = target.CFrame - Vector3.new(0, 8.5, 0)
+
         pcall(function()
-            if char then
-                for _, p in ipairs(char:GetDescendants()) do
-                    if p:IsA("BasePart") then p.CanCollide = false end
-                end
-            end
+            hrp.CFrame = underPos
+            hrp.Anchored = true
+            stealthAnchored = true
         end)
-    end)
-    pcall(function()
-        hrp.CFrame = underPos
-        hrp.Anchored = true          -- تثبيت: لا جاذبية، لا سقوط
-        stealthAnchored = true
-    end)
-    task.wait(sp.tpWait)
-    fireCash(target)
-    local t0 = tick()
-    while coins.Value == v and tick() - t0 < sp.timeout do
-        -- إعادة تموضع كل محاولة (حماية مزدوجة من الانجراف)
-        pcall(function()
-            local _, h3 = getChar()
-            if h3 and h3.Anchored then h3.CFrame = underPos end
-        end)
-        task.wait(sp.fireGap)
-        if not (target and target.Parent) then break end
+        task.wait(sp.tpWait)
         fireCash(target)
-    end
-    stealthCleanup(origin)
 
-    -- حماية أخيرة من الفراغ: لو النفس أقل من الأصل بـ40 ستد نرجع فوراً
+        -- الضمان الكامل: لا خروج حتى يدخل المبلغ أو يختفي الكاش
+        while stealthOn and coins.Value == v and target.Parent do
+            pcall(function()
+                local _, h3 = getChar()
+                if h3 and h3.Anchored then h3.CFrame = underPos end
+            end)
+            task.wait(sp.fireGap)
+            fireCash(target)
+        end
+
+        pcall(function()
+            local _, h4 = getChar()
+            if h4 then h4.Anchored = false stealthAnchored = false end
+        end)
+
+        if coins.Value > v then
+            cashTotal += 1
+            earnedTotal += (coins.Value - v)
+            renderStealth()
+        end
+    end
+
+    -- الرجوع فقط بعد الانتهاء من الأخذ
     pcall(function()
-        local _, h4 = getChar()
-        if h4 and h4.Position.Y < originY - 40 then
-            h4.CFrame = origin
-            h4.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+        local _, h5 = getChar()
+        if h5 then
+            h5.Anchored = false
+            stealthAnchored = false
+            h5.CFrame = origin
+            h5.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+        end
+    end)
+    task.wait(0.15)
+    stealthNoclipOff()
+
+    -- حارس الفراغ
+    pcall(function()
+        local _, h6 = getChar()
+        if h6 and h6.Position.Y < originY - 40 then
+            stealthNoclipOn()
+            h6.CFrame = origin
+            h6.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+            task.wait(0.15)
+            stealthNoclipOff()
         end
     end)
 
-    if coins.Value > v then
-        stealthTotal += 1
-        renderStealth()
-    end
     task.wait(sp.cooldown)
 end
 task.spawn(function() while true do pcall(stealthCycle) task.wait(0.1) end end)
 
 player.CharacterAdded:Connect(function()
     stealthAnchored = false
-    if stealthNoclip then pcall(function() stealthNoclip:Disconnect() end) stealthNoclip = nil end
+    stealthNoclipOff()
 end)
 
---===== 3) تنظيف أوتوماتيكي =====--
+--===== 2) تنظيف أوتوماتيكي =====--
 local cleanCard, cleanSw = makeCard(farmPage, "cleanName", "cleanDesc", Color3.fromRGB(120, 200, 255), 100)
 local cleanInfo = makeCounter(cleanCard, Color3.fromRGB(120, 200, 255), 64)
 local cleanOn = false
@@ -811,7 +805,7 @@ local function cleanCycle()
 end
 task.spawn(function() while true do pcall(cleanCycle) task.wait(0.1) end end)
 
---===== 4) XO فوز تلقائي =====--
+--===== 3) XO فوز تلقائي =====--
 local xoCard, xoSw = makeCard(farmPage, "xoName", "xoDesc", Color3.fromRGB(255, 180, 60), 100)
 local xoInfo = makeCounter(xoCard, Color3.fromRGB(255, 180, 60), 64)
 local xoOn = false
@@ -1389,4 +1383,4 @@ langBtn.MouseButton1Click:Connect(function()
 end)
 
 setStatus(txt("ready"))
-print("[Adiiiiiiix v13] loaded OK")
+print("[Adiiiiiiix v14] loaded OK")
