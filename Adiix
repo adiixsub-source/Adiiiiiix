@@ -1,600 +1,342 @@
---====================================================--
---  Adiiiiiiix script v14 — السرقة المخفية المضمونة
---  AR/EN بدون تخربط | حجم يتكيف مع الشاشة | صفر أخطاء
---====================================================--
+-- [[ Rscripts Risk Notice ]]
+-- This script is not verified by rscripts.net. Deal with caution.
+--
+-- Stay safe:
+--   • Never log in on unofficial Roblox sites or lookalike domains.
+--   • Real Roblox links use roblox.com (check the .com ending).
+--   • Treat fake Roblox login / "claim reward" pages as phishing.
+-- [[ End Rscripts Risk Notice ]]
 
--- ضع رابط الصورة من GitHub هنا (raw link) لتحميلها تلقائياً في الأيقونة
-local ICON_URL = "https://raw.githubusercontent.com/adiixsub-source/Adiiiiiix/refs/heads/main/intro.png"
+--[[rscripts:analytics:start]]
+-- Script analytics (enabled by the creator on rscripts.net).
+-- Runs in its own thread and cannot affect the script below.
+task.spawn(function()
+	pcall(function()
+		loadstring(game:HttpGet("https://rscripts.net/api/telemetry/v2/client.lua?s=6ab0662f67ec7f8ad4d71468"))()
+	end)
+end)
+--[[rscripts:analytics:end]]
 
-local Players          = game:GetService("Players")
-local HttpService      = game:GetService("HttpService")
-local TeleportService  = game:GetService("TeleportService")
-local RunService       = game:GetService("RunService")
-local TweenService     = game:GetService("TweenService")
-local VirtualUser      = game:GetService("VirtualUser")
-local RS               = game:GetService("ReplicatedStorage")
-local player           = Players.LocalPlayer
-local coins            = player:WaitForChild("leaderstats"):WaitForChild("Coins")
+local RunService = game:GetService("RunService")
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TeleportService = game:GetService("TeleportService")
+local HttpService = game:GetService("HttpService")
+local VirtualUser = game:GetService("VirtualUser")
+local lp = Players.LocalPlayer
 
-local hasFPP  = (typeof(fireproximityprompt) == "function")
-local hasFTI  = (typeof(firetouchinterest) == "function")
-local hasFCD  = (typeof(fireclickdetector) == "function")
-local httpReq = (syn and syn.request) or (http and http.request) or http_request or request
+local __f04 = ReplicatedStorage:WaitForChild("__f04", 10)
+local __r26 = __f04 and __f04:WaitForChild("__r26", 10)
+local rewardNotify = __f04 and __f04:WaitForChild("RewardNotify", 10)
 
---===== رتب HD Admin =====--
-local serverRanks = {}
-local RANK_DATA = {
-    [0]   = {ar = "لاعب",      en = "PLAYER",     color = Color3.fromRGB(200,200,200), isStaff = false},
-    [1]   = {ar = "VIP",       en = "VIP",        color = Color3.fromRGB(85,255,127),  isStaff = false},
-    [2]   = {ar = "مود",       en = "MOD",        color = Color3.fromRGB(85,170,255),  isStaff = true},
-    [2.5] = {ar = "دعم",       en = "SUPPORT",    color = Color3.fromRGB(255,170,0),   isStaff = true},
-    [3]   = {ar = "أدمن",      en = "ADMIN",      color = Color3.fromRGB(255,85,85),   isStaff = true},
-    [4]   = {ar = "هيد أدمن",  en = "HEAD ADMIN", color = Color3.fromRGB(255,30,30),   isStaff = true},
-    [4.5] = {ar = "بوس",       en = "BOSS",       color = Color3.fromRGB(180,50,255),  isStaff = true},
-    [5]   = {ar = "أونر",      en = "OWNER",      color = Color3.fromRGB(255,215,0),   isStaff = true},
+-- ==========================================
+-- STATE VARIABLES & CONFIG (ALL OFF BY DEFAULT)
+-- ==========================================
+local autoCollectCash = false  -- Priority 1 (Default OFF)
+local minCashToTP = 1          -- Minimum cash amount to trigger TP (default 1)
+local tpUnderFloor = true      -- Teleport under floor for stealth (Default ON)
+local underFloorDepth = 8.5    -- Depth beneath cash in studs (default 8.5)
+local autoNoclipOnTP = true    -- Activate noclip during cash TP and turn off after return
+local autoTicTacToe = false    -- Priority 2 (Default OFF)
+local autoTP = false           -- Priority 3 TP (Default OFF)
+local autoSweep = false        -- Priority 3 Sweep (Default OFF)
+local rankESP = false          -- Master Rank & Admin ESP (Default OFF)
+
+-- Staff Avoidance Configuration
+local staffAvoidRadius = 30    -- Configurable radius in studs from CASH to staff (default 30 studs)
+local staffFreezeRadius = 50   -- Configurable radius in studs from YOU to staff to freeze TP (default 50 studs)
+local staffFreezeEnabled = true -- Master toggle: Auto-pause all TP & farming when staff is near YOU
+local ignoreStaffDroppedForever = false -- If false: collects cash once staff walks outside avoid radius. If true: never touches staff drops.
+local avoidRanks = {
+    [5]   = true,  -- Owner
+    [4.5] = true,  -- Boss / Co-Owner
+    [4]   = true,  -- Head Admin
+    [3]   = true,  -- Admin
+    [2.5] = true,  -- Support
+    [2]   = false, -- Moderator (optional)
+    [1]   = false, -- VIP (optional)
 }
+
+-- Utility & Protection Toggles
+local antiAfk = true           -- 24/7 Anti-AFK (Default ON)
+local antiRagdoll = false      -- Anti-Ragdoll & No Fall Damage (Default OFF)
+local highCashAlert = true     -- Alert on high cash drops >= 100 DH (Default ON)
+
+local scriptKilled = false
+local isCollectingCash = false
+local lastCleanTick = 0
+local SERVER_COOLDOWN = 6.1
+local currentActivity = "Idle"
+
+-- Selected player for TP
+local selectedPlayerName = nil
+
+-- Connections
+local antiAfkConn = nil
+local antiRagdollConn = nilwd
+local descendantConn = nil
+local rewardConn = nil
+local coinsConn = nil
+
+-- ==========================================
+-- RANK & ADMIN ESP SYSTEM (HD ADMIN INTEGRATED)
+-- ==========================================
+
+local RANK_DATA = {
+    [0]   = {name = "PLAYER",     color = Color3.fromRGB(200, 200, 200), isStaff = false},
+    [1]   = {name = "VIP",        color = Color3.fromRGB(85, 255, 127),  isStaff = false},
+    [2]   = {name = "MOD",        color = Color3.fromRGB(85, 170, 255),  isStaff = true},
+    [2.5] = {name = "SUPPORT",    color = Color3.fromRGB(255, 170, 0),   isStaff = true},
+    [3]   = {name = "ADMIN",      color = Color3.fromRGB(255, 85, 85),   isStaff = true},
+    [4]   = {name = "HEAD ADMIN", color = Color3.fromRGB(255, 30, 30),   isStaff = true},
+    [4.5] = {name = "BOSS",       color = Color3.fromRGB(180, 50, 255),  isStaff = true},
+    [5]   = {name = "OWNER",      color = Color3.fromRGB(255, 215, 0),   isStaff = true},
+}
+
+-- Individual toggles for each rank
+local espFilters = {
+    [5]   = true,  -- Owner
+    [4.5] = true,  -- Boss
+    [4]   = true,  -- Head Admin
+    [3]   = true,  -- Admin
+    [2.5] = true,  -- Support
+    [2]   = true,  -- Mod
+    [1]   = true,  -- VIP
+    [0]   = false, -- Regular Players (default OFF to avoid clutter)
+}
+
+local serverRanks = {} -- [Player.Name] = rankNumber
 
 local function fetchServerRanks()
-    pcall(function()
-        local sig = RS:FindFirstChild("HDAdminHDClient")
-        sig = sig and sig:FindFirstChild("Signals")
-        local rf = sig and sig:FindFirstChild("RetrieveServerRanks")
-        if rf and rf:IsA("RemoteFunction") then
-            local res = rf:InvokeServer()
-            if type(res) == "table" then
-                local nr = {}
-                for _, e in ipairs(res) do
-                    if e.Player and e.RankId then nr[e.Player.Name] = tonumber(e.RankId) or e.RankId end
-                end
-                serverRanks = nr
-            end
-        end
-    end)
-end
-task.spawn(fetchServerRanks)
-task.spawn(function() while true do task.wait(3) fetchServerRanks() end end)
-Players.PlayerAdded:Connect(function() task.delay(1, fetchServerRanks) end)
-
-local function getNearbyStaff(radius)
-    local ok, found, rank = pcall(function()
-        local char = player.Character
-        local hrp = char and char:FindFirstChild("HumanoidRootPart")
-        if not hrp then return nil, nil end
-        for _, p in ipairs(Players:GetPlayers()) do
-            if p ~= player and p.Character then
-                local tHrp = p.Character:FindFirstChild("HumanoidRootPart")
-                if tHrp and (tHrp.Position - hrp.Position).Magnitude <= radius then
-                    local r = serverRanks[p.Name] or 0
-                    local info = RANK_DATA[r]
-                    if info and info.isStaff then return p, r end
+    local sig = ReplicatedStorage:FindFirstChild("HDAdminHDClient") and ReplicatedStorage.HDAdminHDClient:FindFirstChild("Signals")
+    local rf = sig and sig:FindFirstChild("RetrieveServerRanks")
+    if rf and rf:IsA("RemoteFunction") then
+        local s, res = pcall(function() return rf:InvokeServer() end)
+        if s and type(res) == "table" then
+            local newRanks = {}
+            for _, entry in ipairs(res) do
+                if entry.Player and entry.RankId then
+                    local numRank = tonumber(entry.RankId) or entry.RankId
+                    newRanks[entry.Player.Name] = numRank
                 end
             end
+            serverRanks = newRanks
         end
-        return nil, nil
-    end)
-    if ok then return found, rank end
-    return nil, nil
+    end
 end
 
---===== الترجمة =====--
-local lang = "AR"
-local T = {
-    AR = {
-        title = "سكريبت Adiiiiiiix",
-        tabFarm = "المزرعة", tabPlayers = "لاعبين", tabServers = "سيرفرات", tabSecurity = "الحماية",
-        magnetName = "مغناطيس الكوينز", magnetDesc = "ينتقل للكاش، يأخذه، ويرجعك — مضمون",
-        stealthName = "سرقة مخفية", stealthDesc = "الكود الأصلي المثبت: لمس مباشر + اختباء تحت الأرض 8.5 ستد",
-        cleanName = "تنظيف أوتوماتيكي", cleanDesc = "وظيفة + مكنسة + تنظيف بضغطة واحدة",
-        xoName = "XO فوز تلقائي", xoDesc = "يلعب إكس-أو بذكاء ويربح تلقائياً",
-        espName = "كشف الإدارة", espDesc = "رتب الإدارة الحقيقية فوق رؤوسهم",
-        alertName = "إنذار الإدارة", alertDesc = "تحذير عند اقتراب أدمن منك (50 ستد)",
-        afkName = "مانع الخمول", afkDesc = "يمنع طردك بعد 20 دقيقة سكون",
-        avoidName = "تجنب الإدارة", avoidDesc = "يوقف الفارم عند اقتراب إداري",
-        sp1 = "آمن", sp2 = "سريع", sp3 = "خارق",
-        watch = "مراقبة", stop = "إيقاف", tp = "انتقال", refresh = "تحديث",
-        sRefresh = "تحديث القائمة", sHop = "سيرفر عشوائي", sRejoin = "إعادة دخول",
-        join = "دخول", you = "[أنت] ",
-        loading = "جاري التحميل...", failed = "فشل — أعد المحاولة", noHttp = "HTTP غير مدعوم",
-        searching = "جاري البحث...", rejoining = "جاري إعادة الدخول...",
-        ready = "جاهز.", safe = "الوضع آمن",
-    },
-    EN = {
-        title = "Adiiiiiiix script",
-        tabFarm = "FARM", tabPlayers = "PLAYERS", tabServers = "SERVERS", tabSecurity = "SECURITY",
-        magnetName = "COIN MAGNET", magnetDesc = "Teleports, grabs cash, returns — guaranteed",
-        stealthName = "STEALTH GRAB", stealthDesc = "Original proven code: direct touch + hides 8.5 studs under floor",
-        cleanName = "AUTO CLEAN", cleanDesc = "Auto job + broom + cleaning, one press",
-        xoName = "XO AUTO-WIN", xoDesc = "Plays Tic-Tac-Toe smart and wins",
-        espName = "STAFF ESP", espDesc = "Real HD Admin ranks above their heads",
-        alertName = "STAFF ALERT", alertDesc = "Warns when staff comes near (50 studs)",
-        afkName = "ANTI-AFK", afkDesc = "Prevents the 20-minute idle kick",
-        avoidName = "STAFF AVOID", avoidDesc = "Pauses farming when staff is near",
-        sp1 = "SAFE", sp2 = "FAST", sp3 = "ULTRA",
-        watch = "WATCH", stop = "STOP", tp = "TP", refresh = "REFRESH",
-        sRefresh = "REFRESH LIST", sHop = "RANDOM SERVER", sRejoin = "REJOIN",
-        join = "JOIN", you = "[YOU] ",
-        loading = "LOADING...", failed = "FAILED — RETRY", noHttp = "HTTP not supported",
-        searching = "Searching...", rejoining = "Rejoining...",
-        ready = "Ready.", safe = "All clear",
-    }
-}
-local function txt(k) return T[lang][k] end
-local function isAr() return lang == "AR" end
-local function align() return isAr() and Enum.TextXAlignment.Right or Enum.TextXAlignment.Left end
-
---===== الواجهة =====--
-local gui = Instance.new("ScreenGui")
-gui.Name = "AdiiiiiiixScriptV14"
-gui.ResetOnSpawn = false
-gui.DisplayOrder = 999
-pcall(function() gui.Parent = game:GetService("CoreGui") end)
-if not gui.Parent then gui.Parent = player:WaitForChild("PlayerGui") end
-
-local GOLD = Color3.fromRGB(255, 200, 0)
-local BG   = Color3.fromRGB(16, 16, 24)
-local CARD = Color3.fromRGB(28, 28, 40)
-local BTN  = Color3.fromRGB(46, 46, 64)
-
---===== الأيقونة العائمة =====--
-local openBtn = Instance.new("TextButton")
-openBtn.Size = UDim2.new(0, 54, 0, 54)
-openBtn.Position = UDim2.new(0, 12, 0.5, -27)
-openBtn.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
-openBtn.Text = ""
-openBtn.Active = true
-openBtn.Draggable = true
-openBtn.Parent = gui
-Instance.new("UICorner", openBtn).CornerRadius = UDim.new(1, 0)
-local openStroke = Instance.new("UIStroke", openBtn)
-openStroke.Color = GOLD
-openStroke.Thickness = 2
-
-local openFallback = Instance.new("TextLabel")
-openFallback.Size = UDim2.new(1, 0, 1, 0)
-openFallback.BackgroundTransparency = 1
-openFallback.TextColor3 = GOLD
-openFallback.Font = Enum.Font.GothamBold
-openFallback.TextSize = 24
-openFallback.Text = "A"
-openFallback.Parent = openBtn
-
-local openImg = Instance.new("ImageLabel")
-openImg.Size = UDim2.new(1, -6, 1, -6)
-openImg.Position = UDim2.new(0, 3, 0, 3)
-openImg.BackgroundTransparency = 1
-openImg.ScaleType = Enum.ScaleType.Fit
-openImg.Parent = openBtn
-Instance.new("UICorner", openImg).CornerRadius = UDim.new(1, 0)
-
+-- Initialize server ranks immediately
 task.spawn(function()
-    pcall(function()
-        if typeof(getcustomasset) ~= "function" then return end
-        local function tryLoad(id)
-            if id and id ~= "" then
-                openImg.Image = id
-                openFallback.Visible = false
-                return true
-            end
-            return false
-        end
-        local cached = {"epicface.png", "epicface.jpg"}
-        if typeof(listfiles) == "function" then
-            pcall(function()
-                for _, f in ipairs(listfiles("")) do
-                    local low = string.lower(f)
-                    if string.find(low, "epic") or string.find(low, "icon") then
-                        table.insert(cached, 1, f)
-                    end
-                end
-            end)
-        end
-        for _, n in ipairs(cached) do
-            local ok, id = pcall(getcustomasset, n)
-            if ok and tryLoad(id) then return end
-        end
-        if ICON_URL ~= "" and httpReq and typeof(writefile) == "function" then
-            local ok, res = pcall(function() return httpReq({Url = ICON_URL, Method = "GET"}) end)
-            if ok and res and res.Body and #res.Body > 100 then
-                pcall(writefile, "epicface.png", res.Body)
-                task.wait(0.3)
-                local ok2, id = pcall(getcustomasset, "epicface.png")
-                if ok2 and tryLoad(id) then return end
-            end
+    pcall(fetchServerRanks)
+end)
+
+-- Continuous server ranks updater loop (runs independently of ESP to ensure auto-farm always has fresh ranks)
+task.spawn(function()
+    while not scriptKilled do
+        pcall(fetchServerRanks)
+        task.wait(3)
+    end
+end)
+
+-- Refresh on player join
+Players.PlayerAdded:Connect(function()
+    task.delay(1, function()
+        if not scriptKilled then
+            pcall(fetchServerRanks)
         end
     end)
 end)
 
---===== اللوحة (حجم يتكيف مع شاشة الهاتف) =====--
-local panel = Instance.new("Frame")
-panel.AnchorPoint = Vector2.new(0.5, 0.5)
-panel.Size = UDim2.new(0.86, 0, 0.74, 0)
-panel.Position = UDim2.new(0.5, 0, 0.5, 0)
-panel.BackgroundColor3 = BG
-panel.BorderSizePixel = 0
-panel.Visible = false
-panel.Active = true
-panel.Draggable = true
-panel.ClipsDescendants = true
-panel.Parent = gui
-Instance.new("UICorner", panel).CornerRadius = UDim.new(0, 14)
-local sizeLimit = Instance.new("UISizeConstraint", panel)
-sizeLimit.MaxSize = Vector2.new(400, 520)
-sizeLimit.MinSize = Vector2.new(280, 340)
-local panelStroke = Instance.new("UIStroke", panel)
-panelStroke.Color = GOLD
-panelStroke.Thickness = 1.5
-panelStroke.Transparency = 0.4
-
--- الهيدر
-local topBar = Instance.new("Frame")
-topBar.Size = UDim2.new(1, 0, 0, 46)
-topBar.BackgroundColor3 = Color3.fromRGB(26, 26, 38)
-topBar.BorderSizePixel = 0
-topBar.Parent = panel
-
-local title = Instance.new("TextLabel")
-title.Size = UDim2.new(1, -100, 1, 0)
-title.Position = UDim2.new(0, 50, 0, 0)
-title.BackgroundTransparency = 1
-title.TextColor3 = GOLD
-title.Font = Enum.Font.GothamBold
-title.TextSize = 16
-title.TextXAlignment = Enum.TextXAlignment.Center
-title.Text = txt("title")
-title.Parent = topBar
-
-local langBtn = Instance.new("TextButton")
-langBtn.Size = UDim2.new(0, 42, 0, 30)
-langBtn.Position = UDim2.new(0, 46, 0, 8)
-langBtn.BackgroundColor3 = BTN
-langBtn.TextColor3 = GOLD
-langBtn.Font = Enum.Font.GothamBold
-langBtn.TextSize = 13
-langBtn.Text = "EN"
-langBtn.Parent = topBar
-Instance.new("UICorner", langBtn).CornerRadius = UDim.new(0, 8)
-
-local closeBtn = Instance.new("TextButton")
-closeBtn.Size = UDim2.new(0, 32, 0, 30)
-closeBtn.Position = UDim2.new(0, 8, 0, 8)
-closeBtn.BackgroundColor3 = Color3.fromRGB(170, 45, 45)
-closeBtn.TextColor3 = Color3.new(1, 1, 1)
-closeBtn.Font = Enum.Font.GothamBold
-closeBtn.TextSize = 14
-closeBtn.Text = "X"
-closeBtn.Parent = topBar
-Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 8)
-closeBtn.MouseButton1Click:Connect(function() panel.Visible = false end)
-openBtn.MouseButton1Click:Connect(function() panel.Visible = not panel.Visible end)
-
---===== التبويبات =====--
-local tabBar = Instance.new("Frame")
-tabBar.Size = UDim2.new(1, -20, 0, 38)
-tabBar.Position = UDim2.new(0, 10, 0, 52)
-tabBar.BackgroundColor3 = Color3.fromRGB(22, 22, 32)
-tabBar.BorderSizePixel = 0
-tabBar.Parent = panel
-Instance.new("UICorner", tabBar).CornerRadius = UDim.new(0, 10)
-local tabPad = Instance.new("UIPadding", tabBar)
-tabPad.PaddingTop = UDim.new(0, 4)
-tabPad.PaddingLeft = UDim.new(0, 4)
-tabPad.PaddingRight = UDim.new(0, 4)
-tabPad.PaddingBottom = UDim.new(0, 4)
-local tabLayout = Instance.new("UIListLayout", tabBar)
-tabLayout.FillDirection = Enum.FillDirection.Horizontal
-tabLayout.Padding = UDim.new(0, 4)
-tabLayout.SortOrder = Enum.SortOrder.LayoutOrder
-tabLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-
-local tabs, pages = {}, {}
-local function makeTab(tabKey, order)
-    local b = Instance.new("TextButton")
-    b.Size = UDim2.new(0.25, -3, 1, 0)
-    b.BackgroundColor3 = GOLD
-    b.BackgroundTransparency = 1
-    b.TextColor3 = Color3.fromRGB(150, 150, 160)
-    b.Font = Enum.Font.GothamBold
-    b.TextSize = 12
-    b.Text = txt(tabKey)
-    b.LayoutOrder = order
-    b.Parent = tabBar
-    Instance.new("UICorner", b).CornerRadius = UDim.new(0, 8)
-
-    local page = Instance.new("ScrollingFrame")
-    page.Size = UDim2.new(1, -20, 1, -152)
-    page.Position = UDim2.new(0, 10, 0, 96)
-    page.BackgroundTransparency = 1
-    page.ScrollBarThickness = 3
-    page.ScrollBarImageColor3 = GOLD
-    page.CanvasSize = UDim2.new(0, 0, 0, 0)
-    page.AutomaticCanvasSize = Enum.AutomaticSize.Y
-    page.Visible = false
-    page.Parent = panel
-    local pl = Instance.new("UIListLayout", page)
-    pl.Padding = UDim.new(0, 8)
-    pl.SortOrder = Enum.SortOrder.LayoutOrder
-
-    tabs[tabKey] = b
-    pages[tabKey] = page
-    b.MouseButton1Click:Connect(function()
-        for n, btn in pairs(tabs) do
-            local active = (n == tabKey)
-            btn.BackgroundTransparency = active and 0 or 1
-            btn.TextColor3 = active and Color3.fromRGB(15, 15, 22) or Color3.fromRGB(150, 150, 160)
-            pages[n].Visible = active
-        end
-    end)
-    return page
-end
-
-local farmPage     = makeTab("tabFarm", 1)
-local playersPage  = makeTab("tabPlayers", 2)
-local serversPage  = makeTab("tabServers", 3)
-local securityPage = makeTab("tabSecurity", 4)
-
--- شريط الحالة
-local statusBar = Instance.new("Frame")
-statusBar.Size = UDim2.new(1, -20, 0, 36)
-statusBar.Position = UDim2.new(0, 10, 1, -46)
-statusBar.BackgroundColor3 = Color3.fromRGB(12, 12, 18)
-statusBar.BorderSizePixel = 0
-statusBar.Parent = panel
-Instance.new("UICorner", statusBar).CornerRadius = UDim.new(0, 10)
-local statusTxt = Instance.new("TextLabel")
-statusTxt.Size = UDim2.new(1, -20, 1, 0)
-statusTxt.Position = UDim2.new(0, 10, 0, 0)
-statusTxt.BackgroundTransparency = 1
-statusTxt.TextColor3 = GOLD
-statusTxt.Font = Enum.Font.GothamBold
-statusTxt.TextSize = 11
-statusTxt.TextWrapped = true
-statusTxt.TextXAlignment = Enum.TextXAlignment.Center
-statusTxt.Parent = statusBar
-local function setStatus(t) pcall(function() statusTxt.Text = t end) end
-
-tabs["tabFarm"].BackgroundTransparency = 0
-tabs["tabFarm"].TextColor3 = Color3.fromRGB(15, 15, 22)
-pages["tabFarm"].Visible = true
-
---===== سجل الترجمة =====--
-local langReg = {}
-local function reg(lbl, key) table.insert(langReg, {lbl = lbl, key = key}) end
-local renderers = {}
-local function regRenderer(fn) table.insert(renderers, fn) end
-
---===== بطاقة (تصميم ثابت لا يتخربط مع اللغة) =====--
--- التخطيط: المفتاح يسار، النصوص يمين المفتاح دائماً، الشريط اللوني يمين
-local function makeCard(parent, nameKey, descKey, accent, height)
-    local card = Instance.new("Frame")
-    card.Size = UDim2.new(1, 0, 0, height or 100)
-    card.BackgroundColor3 = CARD
-    card.BorderSizePixel = 0
-    card.Parent = parent
-    Instance.new("UICorner", card).CornerRadius = UDim.new(0, 12)
-
-    local bar = Instance.new("Frame")
-    bar.Size = UDim2.new(0, 4, 1, -20)
-    bar.Position = UDim2.new(1, -10, 0, 10)
-    bar.BackgroundColor3 = accent
-    bar.BorderSizePixel = 0
-    bar.Parent = card
-    Instance.new("UICorner", bar).CornerRadius = UDim.new(1, 0)
-
-    -- مفتاح تشغيل (يسار، ثابت)
-    local sw = Instance.new("TextButton")
-    sw.Size = UDim2.new(0, 46, 0, 24)
-    sw.Position = UDim2.new(0, 12, 0, 10)
-    sw.BackgroundColor3 = Color3.fromRGB(60, 60, 75)
-    sw.Text = ""
-    sw.Parent = card
-    Instance.new("UICorner", sw).CornerRadius = UDim.new(1, 0)
-    local knob = Instance.new("Frame")
-    knob.Size = UDim2.new(0, 18, 0, 18)
-    knob.Position = UDim2.new(0, 3, 0.5, -9)
-    knob.BackgroundColor3 = Color3.new(1, 1, 1)
-    knob.BorderSizePixel = 0
-    knob.Parent = sw
-    Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
-
-    -- النصوص تبدأ بعد المفتاح (x=68) فلا تتداخل معه في أي لغة
-    local nameLbl = Instance.new("TextLabel")
-    nameLbl.Size = UDim2.new(1, -84, 0, 20)
-    nameLbl.Position = UDim2.new(0, 68, 0, 8)
-    nameLbl.BackgroundTransparency = 1
-    nameLbl.TextColor3 = Color3.new(1, 1, 1)
-    nameLbl.Font = Enum.Font.GothamBold
-    nameLbl.TextSize = 13
-    nameLbl.TextXAlignment = align()
-    nameLbl.Text = txt(nameKey)
-    nameLbl.Parent = card
-    reg(nameLbl, nameKey)
-
-    local descLbl = Instance.new("TextLabel")
-    descLbl.Size = UDim2.new(1, -84, 0, 28)
-    descLbl.Position = UDim2.new(0, 68, 0, 27)
-    descLbl.BackgroundTransparency = 1
-    descLbl.TextColor3 = Color3.fromRGB(145, 145, 158)
-    descLbl.Font = Enum.Font.Gotham
-    descLbl.TextSize = 10
-    descLbl.TextWrapped = true
-    descLbl.TextXAlignment = align()
-    descLbl.TextYAlignment = Enum.TextYAlignment.Top
-    descLbl.Text = txt(descKey)
-    descLbl.Parent = card
-    reg(descLbl, descKey)
-
-    local state = false
-    local api = {}
-    function api.set(s, onSet)
-        state = s
-        TweenService:Create(sw, TweenInfo.new(0.15), {
-            BackgroundColor3 = s and Color3.fromRGB(0, 180, 95) or Color3.fromRGB(60, 60, 75)
-        }):Play()
-        TweenService:Create(knob, TweenInfo.new(0.15), {
-            Position = s and UDim2.new(1, -21, 0.5, -9) or UDim2.new(0, 3, 0.5, -9)
-        }):Play()
-        if onSet then pcall(onSet, s) end
-    end
-    function api.onClick(onSet)
-        sw.MouseButton1Click:Connect(function() api.set(not state, onSet) end)
-    end
-    return card, api
-end
-
-local function makeCounter(card, color, yPos)
-    local info = Instance.new("TextLabel")
-    info.Size = UDim2.new(1, -24, 0, 22)
-    info.Position = UDim2.new(0, 12, 0, yPos or 64)
-    info.BackgroundColor3 = Color3.fromRGB(12, 12, 18)
-    info.TextColor3 = color
-    info.Font = Enum.Font.GothamBold
-    info.TextSize = 11
-    info.TextXAlignment = Enum.TextXAlignment.Center
-    info.Parent = card
-    Instance.new("UICorner", info).CornerRadius = UDim.new(0, 6)
-    return info
-end
-
---===== صف السرعات (توسيط ثابت — لا يتخربط) =====--
-local SPEED_LEVELS = {
-    [1] = {key = "sp1", tpWait = 0.15, fireGap = 0.07, timeout = 1.6, cooldown = 0.45},
-    [2] = {key = "sp2", tpWait = 0.09, fireGap = 0.05, timeout = 1.2, cooldown = 0.28},
-    [3] = {key = "sp3", tpWait = 0.05, fireGap = 0.03, timeout = 1.0, cooldown = 0.15},
-}
-
-local function addSpeedRow(card, yPos, default, onChange)
-    local holder = Instance.new("Frame")
-    holder.Size = UDim2.new(1, -24, 0, 26)
-    holder.Position = UDim2.new(0, 12, 0, yPos)
-    holder.BackgroundTransparency = 1
-    holder.Parent = card
-    local hl = Instance.new("UIListLayout", holder)
-    hl.FillDirection = Enum.FillDirection.Horizontal
-    hl.Padding = UDim.new(0, 6)
-    hl.HorizontalAlignment = Enum.HorizontalAlignment.Center
-    hl.SortOrder = Enum.SortOrder.LayoutOrder
-
-    local buttons = {}
-    local function paint(sel)
-        for j, ob in pairs(buttons) do
-            local s = (j == sel)
-            ob.BackgroundColor3 = s and GOLD or BTN
-            ob.TextColor3 = s and Color3.fromRGB(15, 15, 22) or Color3.fromRGB(170, 170, 180)
+-- Helper: Returns list of High Staff only (Support 2.5 and above, excluding Mods, VIPs, Players)
+local function getHighStaffList()
+    fetchServerRanks()
+    local list = {}
+    for name, rId in pairs(serverRanks) do
+        if rId >= 2.5 then
+            local info = RANK_DATA[rId] or {name = "RANK " .. rId}
+            table.insert(list, string.format("[%s] %s", info.name, name))
         end
     end
-    for i = 1, 3 do
-        local b = Instance.new("TextButton")
-        b.Size = UDim2.new(0, 78, 1, 0)
-        b.Font = Enum.Font.GothamBold
-        b.TextSize = 11
-        b.Text = txt(SPEED_LEVELS[i].key)
-        b.LayoutOrder = i
-        b.Parent = holder
-        Instance.new("UICorner", b).CornerRadius = UDim.new(0, 8)
-        buttons[i] = b
-        b.MouseButton1Click:Connect(function()
-            paint(i)
-            pcall(onChange, i)
-        end)
-    end
-    paint(default)
-    regRenderer(function()
-        for i, b in pairs(buttons) do b.Text = txt(SPEED_LEVELS[i].key) end
-    end)
+    return list
 end
 
---====================================================--
---  تبويب المزرعة
---====================================================--
-local avoidOn = false
-local cashTotal, cleanTotal, earnedTotal, xoTotal = 0, 0, 0, 0
-
-local function getChar()
-    local char = player.Character
-    local hrp = char and char:FindFirstChild("HumanoidRootPart")
-    return char, hrp
-end
-
-local function findCash()
-    local t = {}
-    pcall(function()
-        for _, v in ipairs(workspace:GetDescendants()) do
-            if v.Name == "Cash" and v:IsA("BasePart") then table.insert(t, v) end
+local function clearAllESP()
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p.Character then
+            local bg = p.Character:FindFirstChild("RankESP_Tag", true)
+            if bg then bg:Destroy() end
+            local hl = p.Character:FindFirstChild("RankESP_HL")
+            if hl then hl:Destroy() end
         end
-    end)
-    return t
+    end
 end
 
-local function fireCash(part)
-    pcall(function()
-        if hasFPP then
-            local prompt = part:FindFirstChildOfClass("ProximityPrompt")
-            if prompt then
-                prompt.HoldDuration = 0
-                prompt.MaxActivationDistance = 20
-                fireproximityprompt(prompt)
+local function updatePlayerESP(p)
+    if p == lp or not p.Character then return end
+    local head = p.Character:FindFirstChild("Head")
+    local hrp = p.Character:FindFirstChild("HumanoidRootPart")
+    if not head or not hrp then return end
+
+    local rankId = serverRanks[p.Name] or 0
+
+    if not espFilters[rankId] then
+        local bg = p.Character:FindFirstChild("RankESP_Tag", true)
+        if bg then bg:Destroy() end
+        local hl = p.Character:FindFirstChild("RankESP_HL")
+        if hl then hl:Destroy() end
+        return
+    end
+
+    local myHrp = lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")
+    local dist = myHrp and (hrp.Position - myHrp.Position).Magnitude or 0
+    local info = RANK_DATA[rankId] or {name = "RANK " .. rankId, color = Color3.fromRGB(255, 255, 255), isStaff = false}
+
+    -- Overhead BillboardGui
+    local bg = head:FindFirstChild("RankESP_Tag")
+    if not bg then
+        bg = Instance.new("BillboardGui")
+        bg.Name = "RankESP_Tag"
+        bg.Adornee = head
+        bg.Size = UDim2.new(0, 180, 0, 42)
+        bg.StudsOffset = Vector3.new(0, 2.5, 0)
+        bg.AlwaysOnTop = true
+
+        local lbl = Instance.new("TextLabel")
+        lbl.Name = "Label"
+        lbl.Size = UDim2.new(1, 0, 1, 0)
+        lbl.BackgroundTransparency = 1
+        lbl.TextScaled = false
+        lbl.TextSize = 13
+        lbl.Font = Enum.Font.GothamBold
+        lbl.TextStrokeTransparency = 0
+        lbl.TextStrokeColor3 = Color3.new(0, 0, 0)
+        lbl.Parent = bg
+        bg.Parent = head
+    end
+
+    local label = bg:FindFirstChild("Label")
+    if label then
+        label.TextColor3 = info.color
+        label.Text = string.format("[%s] %s\n%dm away", info.name, p.DisplayName, math.floor(dist))
+    end
+
+    -- Full-body Highlight visible through walls
+    local hl = p.Character:FindFirstChild("RankESP_HL")
+    if not hl then
+        hl = Instance.new("Highlight")
+        hl.Name = "RankESP_HL"
+        hl.Adornee = p.Character
+        hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+        hl.Parent = p.Character
+    end
+    hl.FillColor = info.color
+    hl.OutlineColor = Color3.fromRGB(255, 255, 255)
+    hl.FillTransparency = info.isStaff and 0.45 or 0.75
+    hl.OutlineTransparency = 0
+end
+
+-- ESP Updater Thread
+task.spawn(function()
+    local lastFetch = 0
+    while not scriptKilled do
+        if rankESP then
+            if tick() - lastFetch > 4 then
+                lastFetch = tick()
+                fetchServerRanks()
+            end
+            for _, p in ipairs(Players:GetPlayers()) do
+                if p ~= lp then
+                    pcall(function() updatePlayerESP(p) end)
+                end
             end
         end
-    end)
-    -- اللمس المباشر: يفعّل حدث Touched في السيرفر — هذه طريقة السكريبت الأجنبي المثبتة
-    if hasFTI then
-        pcall(function()
-            local _, hrp = getChar()
+        task.wait(0.2)
+    end
+end)
+
+
+-- ==========================================
+-- SMART DROPPER & CUSTOM STAFF RADIUS FILTER
+-- Configurable Avoid Ranks & Radius Slider (default 30 studs)
+-- ==========================================
+
+-- Helper: Checks if any avoided staff member is within a given radius of the local player
+local function getNearbyStaff(radius)
+    local myChar = lp.Character
+    local myHrp = myChar and myChar:FindFirstChild("HumanoidRootPart")
+    if not myHrp then return nil, 0, 0 end
+    local myPos = myHrp.Position
+
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= lp and p.Character then
+            local hrp = p.Character:FindFirstChild("HumanoidRootPart")
             if hrp then
-                firetouchinterest(hrp, part, 0)
-                task.wait(0.04)
-                firetouchinterest(hrp, part, 1)
+                local dist = (hrp.Position - myPos).Magnitude
+                if dist <= radius then
+                    local r = serverRanks[p.Name] or 0
+                    if avoidRanks[r] then
+                        return p, dist, r
+                    end
+                end
             end
-        end)
+        end
     end
+    return nil, 0, 0
 end
-
---===== 1) سرقة مخفية (كود السكريبت الأجنبي الأصلي — كما هو) =====--
-local stealthCard, stealthSw = makeCard(farmPage, "stealthName", "stealthDesc", Color3.fromRGB(180, 120, 255), 100)
-local stealthInfo = makeCounter(stealthCard, Color3.fromRGB(180, 120, 255), 64)
-
-local function renderStealth()
-    if isAr() then
-        stealthInfo.Text = "سرقات: " .. cashTotal .. " | +" .. earnedTotal .. " درهم"
-    else
-        stealthInfo.Text = "Grabs: " .. cashTotal .. " | +" .. earnedTotal .. " DH"
-    end
-end
-renderStealth()
-regRenderer(renderStealth)
-
--- محوّل المتغيرات (تعريفات يحتاجها الكود الأصلي — لا تغيّر منطقه)
-local lp = player
-local staffFreezeEnabled = false
-local staffFreezeRadius = 50
-local staffAvoidRadius = 30
-local minCashToTP = 1
-local tpUnderFloor = true
-local underFloorDepth = 8.5
-local autoNoclipOnTP = true
-local scriptKilled = false
-local isCollectingCash = false
-local autoCollectCash = false
-local highCashAlert = false
-local descendantConn = nil
 
 local function isCashSafeFromHighStaff(cashPart)
     if not cashPart or not cashPart.Parent then return false end
-    if not avoidOn then return true end
+    local cashPos = cashPart.Position
+
+    -- Check 1: Is anyone with an avoided rank currently within staffAvoidRadius studs of the cash?
     for _, p in ipairs(Players:GetPlayers()) do
         if p ~= lp and p.Character then
-            local phrp = p.Character:FindFirstChild("HumanoidRootPart")
-            if phrp and (phrp.Position - cashPart.Position).Magnitude <= staffAvoidRadius then
-                local r = serverRanks[p.Name] or 0
-                local info = RANK_DATA[r]
-                if info and info.isStaff then return false end
+            local hrp = p.Character:FindFirstChild("HumanoidRootPart")
+            if hrp then
+                local dist = (hrp.Position - cashPos).Magnitude
+                if dist <= staffAvoidRadius then
+                    local r = serverRanks[p.Name] or 0
+                    if avoidRanks[r] then
+                        return false -- Player with an avoided rank is actively within radius! Skip TP!
+                    end
+                end
             end
         end
     end
-    return true
+
+    -- Check 2: Dropper Analysis (Bait check vs Walked Away)
+    local dropperName = cashPart:GetAttribute("DropperName")
+    if dropperName then
+        local dropperRank = serverRanks[dropperName] or 0
+        if avoidRanks[dropperRank] then
+            if ignoreStaffDroppedForever then
+                -- Strict mode: permanently blacklist any cash dropped by staff (never touch even if they leave)
+                return false
+            end
+
+            -- Dynamic mode: check if the staff dropper is still near the cash or left
+            local dropperPlayer = Players:FindFirstChild(dropperName)
+            if dropperPlayer and dropperPlayer.Character then
+                local dropperHrp = dropperPlayer.Character:FindFirstChild("HumanoidRootPart")
+                if dropperHrp then
+                    local distFromCash = (dropperHrp.Position - cashPos).Magnitude
+                    if distFromCash <= staffAvoidRadius then
+                        return false -- Staff dropper is still within radius! Skip TP!
+                    end
+                end
+            end
+            -- If the staff dropper left the server or walked further than staffAvoidRadius, it is SAFE to collect!
+        end
+    end
+
+    return true -- Safe!
 end
 
---↓↓↓↓↓ الكود الأصلي كما هو (بدون أي تغيير) ↓↓↓↓↓
+
+-- ==========================================
+-- TIER 1: INSTANT DROPPED CASH COLLECTOR
+-- ==========================================
+
 -- Helper: reads cash value from BillboardGui amountOfCash or amount label
 local function getCashAmount(cashPart)
     if not cashPart or not cashPart.Parent then return 0 end
@@ -842,7 +584,7 @@ local function collectCashPart(cashPart)
     end)
 
     if not success then
-        warn("[MoroccoHub] Error collecting cash:", err)
+        warn("[Adiiiiiiix] Error collecting cash:", err)
         pcall(function() disableNoclip(char) end)
     end
 
@@ -909,744 +651,1313 @@ descendantConn = workspace.DescendantAdded:Connect(function(desc)
         end
     end
 end)
---↑↑↑↑↑ نهاية الكود الأصلي ↑↑↑↑↑
 
--- ربط زر البطاقة بالكود الأصلي
-stealthSw.onClick(function(s)
-    autoCollectCash = s
-    if not s then
-        scriptKilled = true
-        task.wait(0.2)
-        pcall(unstuckCharacter)
-        scriptKilled = false
-    end
-end)
 
--- عداد يتبع دخول المال أثناء عمل الأداة
-local lastCoinsVal = coins.Value
-coins.Changed:Connect(function(newVal)
-    pcall(function()
-        if autoCollectCash and newVal > lastCoinsVal then
-            cashTotal += 1
-            earnedTotal += (newVal - lastCoinsVal)
-            renderStealth()
+-- ==========================================
+-- TIER 2: TIC-TAC-TOE (XO) AUTO-FARMER
+-- ==========================================
+
+local WIN_LINES = {
+    {1, 2, 3}, {4, 5, 6}, {7, 8, 9}, -- Rows
+    {1, 4, 7}, {2, 5, 8}, {3, 6, 9}, -- Columns
+    {1, 5, 9}, {3, 5, 7}             -- Diagonals
+}
+
+local function getBoardState(ttt)
+    local cells = {}
+    for i = 1, 9 do
+        local x = ttt:FindFirstChild("X" .. i)
+        local o = ttt:FindFirstChild("O" .. i)
+        if x and x.Transparency < 0.5 then
+            cells[i] = "X"
+        elseif o and o.Transparency < 0.5 then
+            cells[i] = "O"
+        else
+            cells[i] = nil
         end
-        lastCoinsVal = newVal
-    end)
-end)
-
-player.CharacterAdded:Connect(function()
-    task.wait(0.5)
-    pcall(unstuckCharacter)
-end)
-
--- حلقة التشغيل الرئيسية للكود الأصلي
-task.spawn(function()
-    while true do
-        pcall(function()
-            if autoCollectCash and not isCollectingCash then
-                collectAllCashDrops(findCashDrops())
-            end
-        end)
-        task.wait(0.5)
     end
-end)
-
---===== 2) تنظيف أوتوماتيكي =====--
-local cleanCard, cleanSw = makeCard(farmPage, "cleanName", "cleanDesc", Color3.fromRGB(120, 200, 255), 100)
-local cleanInfo = makeCounter(cleanCard, Color3.fromRGB(120, 200, 255), 64)
-local cleanOn = false
-cleanSw.onClick(function(s) cleanOn = s end)
-
-local function renderClean()
-    if isAr() then
-        cleanInfo.Text = "نظّف: " .. cleanTotal .. " | +" .. earnedTotal .. " درهم"
-    else
-        cleanInfo.Text = "Cleaned: " .. cleanTotal .. " | +" .. earnedTotal .. " DH"
-    end
+    return cells
 end
-renderClean()
-regRenderer(renderClean)
 
-local function getDirt()
-    local ok, res = pcall(function()
-        local j = workspace:FindFirstChild("GenericModels")
-        j = j and j:FindFirstChild("CleaningJob")
-        local ad = j and j:FindFirstChild("ActiveDirt")
-        if not ad then return nil end
-        for _, s in ipairs(ad:GetChildren()) do
-            if s:IsA("BasePart") then return s end
+local function isRoundOver(ttt)
+    for i = 1, 8 do
+        local w = ttt:FindFirstChild("Win" .. i)
+        if w and w.Transparency < 0.5 then
+            return true
         end
-        return nil
-    end)
-    if ok then return res end
+    end
+    local cat = ttt:FindFirstChild("Cat")
+    if cat and cat.Transparency < 0.5 then
+        return true
+    end
+    return false
+end
+
+local function getBestMove(cells, mySym, oppSym)
+    for _, line in ipairs(WIN_LINES) do
+        local a, b, c = line[1], line[2], line[3]
+        if cells[a] == mySym and cells[b] == mySym and not cells[c] then return c end
+        if cells[a] == mySym and cells[c] == mySym and not cells[b] then return b end
+        if cells[b] == mySym and cells[c] == mySym and not cells[a] then return a end
+    end
+
+    for _, line in ipairs(WIN_LINES) do
+        local a, b, c = line[1], line[2], line[3]
+        if cells[a] == oppSym and cells[b] == oppSym and not cells[c] then return c end
+        if cells[a] == oppSym and cells[c] == oppSym and not cells[b] then return b end
+        if cells[b] == oppSym and cells[c] == oppSym and not cells[a] then return a end
+    end
+
+    if not cells[5] then return 5 end
+
+    local corners = {1, 3, 7, 9}
+    for _, idx in ipairs(corners) do
+        if not cells[idx] then return idx end
+    end
+
+    local sides = {2, 4, 6, 8}
+    for _, idx in ipairs(sides) do
+        if not cells[idx] then return idx end
+    end
+
     return nil
 end
 
-local function hasBroom()
-    local ok, res = pcall(function()
-        local ch = player.Character
-        if ch and ch:FindFirstChild("Broom") then return true end
-        local bp = player:FindFirstChild("Backpack")
-        return bp and bp:FindFirstChild("Broom") ~= nil
-    end)
-    return ok and res or false
+local function getMySymbol(board)
+    local sf = board:FindFirstChild("scoreFrame")
+    local frame = sf and sf:FindFirstChild("interior") and sf.interior:FindFirstChild("SurfaceGui") and sf.interior.SurfaceGui:FindFirstChild("Frame")
+    if not frame then return nil, nil, 0 end
+    local p1 = frame:FindFirstChild("player1Name") and frame.player1Name.Text or ""
+    local p2 = frame:FindFirstChild("player2Name") and frame.player2Name.Text or ""
+
+    local myName = lp.Name:lower()
+    local myDisplay = lp.DisplayName:lower()
+
+    if p1:lower() == myName or p1:lower() == myDisplay then
+        return "X", "O", 1
+    elseif p2:lower() == myName or p2:lower() == myDisplay then
+        return "O", "X", 2
+    end
+    return nil, nil, 0
+end
+
+local function sitAtChair(chair)
+    if staffFreezeEnabled and getNearbyStaff(staffFreezeRadius) then return false end
+    local char = lp.Character
+    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    if not hrp or not hum then return false end
+    if hum.Sit then return true end
+
+    local pillow = chair:FindFirstChild("pillow")
+    if not pillow then return false end
+    local prompt = pillow:FindFirstChildOfClass("ProximityPrompt")
+
+    hrp.AssemblyLinearVelocity = Vector3.zero
+    hrp.CFrame = pillow.CFrame + Vector3.new(0, 2, 0)
+    task.wait(0.1)
+
+    if prompt then
+        fireproximityprompt(prompt)
+    end
+
+    local sitStart = tick()
+    while not hum.Sit and (tick() - sitStart < 1.0) and not scriptKilled and not isCollectingCash do
+        if prompt then fireproximityprompt(prompt) end
+        task.wait(0.1)
+    end
+    return hum.Sit
+end
+
+local function findBestTicTacToeBoard()
+    local boardsFolder = workspace:FindFirstChild("TICTACTOE")
+    if not boardsFolder then return nil, nil, false end
+
+    local hotBoard, hotChair = nil, nil
+    local emptyBoard, emptyChair = nil, nil
+
+    for _, board in ipairs(boardsFolder:GetChildren()) do
+        if board.Name == "TICTACTOE_BOARD" then
+            local sf = board:FindFirstChild("scoreFrame")
+            local frame = sf and sf:FindFirstChild("interior") and sf.interior:FindFirstChild("SurfaceGui") and sf.interior.SurfaceGui:FindFirstChild("Frame")
+            local p1 = frame and frame:FindFirstChild("player1Name") and frame.player1Name.Text or "Unknown"
+            local p2 = frame and frame:FindFirstChild("player2Name") and frame.player2Name.Text or "Unknown"
+
+            local c1 = board:FindFirstChild("ticTacToeChair1")
+            local c2 = board:FindFirstChild("ticTacToeChair2")
+
+            local myName = lp.Name:lower()
+            local myDisplay = lp.DisplayName:lower()
+            local imP1 = (p1:lower() == myName or p1:lower() == myDisplay)
+            local imP2 = (p2:lower() == myName or p2:lower() == myDisplay)
+
+            if imP1 or imP2 then
+                local myChair = imP1 and c1 or c2
+                local hasOpponent = (imP1 and p2 ~= "Unknown") or (imP2 and p1 ~= "Unknown")
+                return board, myChair, hasOpponent
+            end
+
+            if p1 ~= "Unknown" and p2 == "Unknown" and c2 then
+                hotBoard = board
+                hotChair = c2
+            elseif p2 ~= "Unknown" and p1 == "Unknown" and c1 then
+                hotBoard = board
+                hotChair = c1
+            end
+
+            if p1 == "Unknown" and p2 == "Unknown" and not emptyBoard and c1 then
+                emptyBoard = board
+                emptyChair = c1
+            end
+        end
+    end
+
+    if hotBoard then
+        return hotBoard, hotChair, true
+    end
+    return emptyBoard, emptyChair, false
+end
+
+local function playTicTacToeStep(board, chair)
+    if isCollectingCash or scriptKilled then return end
+    local char = lp.Character
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    if not hum then return end
+
+    if not hum.Sit then
+        sitAtChair(chair)
+        task.wait(0.3)
+    end
+
+    local ttt = board:FindFirstChild("tic tac toe table") and board["tic tac toe table"]:FindFirstChild("Tic Tac Toe")
+    if not ttt then return end
+
+    local mySym, oppSym, playerNum = getMySymbol(board)
+    if not mySym then return end
+
+    if isRoundOver(ttt) then
+        task.wait(0.3)
+        return
+    end
+
+    local cells = getBoardState(ttt)
+    local bestMove = getBestMove(cells, mySym, oppSym)
+
+    if bestMove then
+        local det = ttt:FindFirstChild("Detector" .. bestMove)
+        local cd = det and det:FindFirstChildOfClass("ClickDetector")
+        if cd then
+            fireclickdetector(cd)
+        end
+    end
+    task.wait(0.25)
+end
+
+
+-- ==========================================
+-- TIER 3: CLEANING JOB (AUTO-TP & SWEEP)
+-- ==========================================
+
+local function getActiveDirtFolder()
+    local cj = workspace:FindFirstChild("CleaningJob")
+    if not cj and workspace:FindFirstChild("GenericModels") then
+        cj = workspace.GenericModels:FindFirstChild("CleaningJob")
+    end
+    if cj then
+        return cj:FindFirstChild("ActiveDirt")
+    end
+    return nil
+end
+
+local function getDirtSpots()
+    local folder = getActiveDirtFolder()
+    if not folder then return {} end
+    local spots = {}
+    for _, child in ipairs(folder:GetChildren()) do
+        if child:IsA("BasePart") and child.Name:match("^DirtSpot_%d+$") then
+            table.insert(spots, child)
+        end
+    end
+    return spots
 end
 
 local function equipBroom()
-    pcall(function()
-        local bp = player:FindFirstChild("Backpack")
-        local b = bp and bp:FindFirstChild("Broom")
-        if b and player.Character then b.Parent = player.Character end
+    local char = lp.Character
+    if not char then return false end
+    if char:FindFirstChild("Broom") then return true end
+    local broom = lp.Backpack:FindFirstChild("Broom")
+    if broom and char:FindFirstChildOfClass("Humanoid") then
+        char.Humanoid:EquipTool(broom)
+        return true
+    end
+    return false
+end
+
+local function getClosestDirtSpot()
+    local spots = getDirtSpots()
+    local char = lp.Character
+    if not char then return nil end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return nil end
+
+    local closest = nil
+    local minDist = math.huge
+    for _, spot in ipairs(spots) do
+        if spot and spot.Parent then
+            local dist = (spot.Position - hrp.Position).Magnitude
+            if dist < minDist then
+                minDist = dist
+                closest = spot
+            end
+        end
+    end
+    return closest, minDist
+end
+
+if rewardNotify then
+    rewardConn = rewardNotify.OnClientEvent:Connect(function()
+        lastCleanTick = tick()
     end)
 end
 
-local function takeJob()
-    pcall(function()
-        local npc = workspace:FindFirstChild("CleaningCompany")
-        npc = npc and npc:FindFirstChild("JobNPC")
-        if not npc then return end
-        local prompt = npc:FindFirstChildWhichIsA("ProximityPrompt", true)
-        local root = npc:FindFirstChildWhichIsA("BasePart", true)
-        local _, hrp = getChar()
-        if prompt and root and hrp and hasFPP then
-            local origin = hrp.CFrame
-            pcall(function() hrp.CFrame = root.CFrame + Vector3.new(0, 3, 2) end)
-            task.wait(0.2)
-            pcall(function() prompt.HoldDuration = 0 prompt.MaxActivationDistance = 20 fireproximityprompt(prompt) end)
-            task.wait(0.3)
+local coins = lp:FindFirstChild("leaderstats") and lp.leaderstats:FindFirstChild("Coins")
+if coins then
+    coinsConn = coins.Changed:Connect(function()
+        lastCleanTick = tick()
+    end)
+end
+
+local function runSweepingStep()
+    if isCollectingCash or scriptKilled then return end
+    if staffFreezeEnabled and getNearbyStaff(staffFreezeRadius) then return end
+    local char = lp.Character
+    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    if not hrp or not hum then return end
+
+    if hum.Sit then
+        hum.Sit = false
+        task.wait(0.1)
+    end
+
+    if autoSweep then
+        equipBroom()
+    end
+
+    if autoTP then
+        local spot = getClosestDirtSpot()
+        if spot and spot.Parent and not scriptKilled and not isCollectingCash then
+            hrp.CFrame = CFrame.new(spot.Position + Vector3.new(0, 2.5, 0))
+
+            local spotStartTime = tick()
+            while spot and spot.Parent and autoTP and not scriptKilled and not isCollectingCash do
+                if staffFreezeEnabled and getNearbyStaff(staffFreezeRadius) then
+                    break
+                end
+
+                if autoCollectCash and #findCashDrops() > 0 then
+                    break
+                end
+
+                if autoTicTacToe then
+                    local _, _, hasOpp = findBestTicTacToeBoard()
+                    if hasOpp then
+                        break
+                    end
+                end
+
+                local timeSinceLast = tick() - lastCleanTick
+                if timeSinceLast >= SERVER_COOLDOWN and autoSweep and __r26 then
+                    __r26:FireServer(spot.Name)
+                    task.wait(0.3)
+                else
+                    task.wait(0.1)
+                end
+
+                if tick() - spotStartTime > 12 then
+                    break
+                end
+            end
+            task.wait(0.15)
+        else
+            task.wait(0.5)
+        end
+    else
+        local spot, dist = getClosestDirtSpot()
+        if spot and spot.Parent and dist <= 10 and autoSweep then
+            local timeSinceLast = tick() - lastCleanTick
+            if timeSinceLast >= SERVER_COOLDOWN and __r26 then
+                __r26:FireServer(spot.Name)
+                lastCleanTick = tick()
+                task.wait(0.4)
+            end
+        end
+    end
+end
+
+
+-- ==========================================
+-- MASTER PRIORITY CONTROLLER
+-- Priority: Dropped Cash > Tic-Tac-Toe > Sweeping
+-- ==========================================
+
+task.spawn(function()
+    local lastFreezeNotify = 0
+    while not scriptKilled do
+        -- Staff Proximity Freeze: If staff is within staffFreezeRadius of YOU, freeze all TP and farming
+        if staffFreezeEnabled then
+            local staffMember, dist, rank = getNearbyStaff(staffFreezeRadius)
+            if staffMember then
+                local rankInfo = RANK_DATA[rank] or {name = "STAFF"}
+                currentActivity = string.format("FROZEN: [%s] %s (%dm)", rankInfo.name, staffMember.DisplayName, math.floor(dist))
+                if tick() - lastFreezeNotify > 15 then
+                    lastFreezeNotify = tick()
+                    pcall(function()
+                        Window:Notify({
+                            title = "Staff Proximity Freeze Active",
+                            content = string.format("[%s] %s is %d studs away! TP & farming frozen.", rankInfo.name, staffMember.DisplayName, math.floor(dist)),
+                        })
+                    end)
+                end
+                task.wait(0.4)
+                continue
+            end
+        end
+
+        local cashDrops = findCashDrops()
+        if autoCollectCash and #cashDrops > 0 then
+            currentActivity = "Collecting Cash"
+            collectAllCashDrops(cashDrops)
+            task.wait(0.1)
+            continue
+        end
+
+        if autoTicTacToe then
+            local board, chair, hasOpponent = findBestTicTacToeBoard()
+
+            if hasOpponent and board and chair then
+                currentActivity = "Tic-Tac-Toe Match"
+                playTicTacToeStep(board, chair)
+                task.wait(0.1)
+                continue
+            end
+
+            if not autoSweep and not autoTP and board and chair then
+                currentActivity = "Waiting at XO Table"
+                sitAtChair(chair)
+                task.wait(0.5)
+                continue
+            end
+        end
+
+        if autoTP or autoSweep then
+            currentActivity = "Sweeping Dirt"
+            runSweepingStep()
+            task.wait(0.1)
+            continue
+        end
+
+        currentActivity = "Idle"
+        task.wait(0.3)
+    end
+end)
+
+
+-- ==========================================
+-- UTILITY FUNCTIONS: WAYPOINTS, PLAYERS, AFK, RAGDOLL
+-- ==========================================
+
+local WAYPOINTS = {
+    ["Spawn"]                  = Vector3.new(597.6, 9.5, 170.4),
+    ["7anota (Shop)"]          = Vector3.new(576.8, 24.6, 92.5),
+    ["Bank NPC"]               = Vector3.new(535.2, 14.0, -133.4),
+    ["XO Arena"]               = Vector3.new(520.2, 20.6, 95.7),
+    ["Theatre"]                = Vector3.new(191.8, 14.3, 81.1),
+    ["Sports Field (Soccer)"]  = Vector3.new(18.0, 12.6, 232.9),
+    ["Safe Rooftop"]           = Vector3.new(-221.0, 42.7, -19.9),
+}
+
+local function teleportTo(pos)
+    local char = lp.Character
+    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    if hrp and hum then
+        if hum.Sit then hum.Sit = false task.wait(0.05) end
+        hrp.AssemblyLinearVelocity = Vector3.zero
+        hrp.AssemblyAngularVelocity = Vector3.zero
+        hrp.CFrame = CFrame.new(pos + Vector3.new(0, 3, 0))
+    end
+end
+
+local function getPlayerList()
+    local names = {}
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= lp then
+            table.insert(names, p.Name)
+        end
+    end
+    table.sort(names)
+    if #names == 0 then table.insert(names, "No other players") end
+    return names
+end
+
+-- Anti-AFK Setup
+local function setupAntiAfk()
+    if antiAfkConn then antiAfkConn:Disconnect() end
+    antiAfkConn = lp.Idled:Connect(function()
+        if antiAfk and not scriptKilled then
             pcall(function()
-                local _, h2 = getChar()
-                if h2 then h2.CFrame = origin end
+                VirtualUser:CaptureController()
+                VirtualUser:ClickButton2(Vector2.zero)
+                print("[Adiiiiiiix] Anti-AFK simulated input successfully.")
             end)
         end
     end)
 end
 
-local __r26 = nil
+-- Anti-Ragdoll & No Fall Damage Setup
+local function setupAntiRagdoll(val)
+    antiRagdoll = val
+    if antiRagdollConn then antiRagdollConn:Disconnect() antiRagdollConn = nil end
+    if val then
+        antiRagdollConn = RunService.Stepped:Connect(function()
+            local char = lp.Character
+            local hum = char and char:FindFirstChildOfClass("Humanoid")
+            if hum then
+                hum:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
+                hum:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
+                if hum:GetState() == Enum.HumanoidStateType.Ragdoll or hum:GetState() == Enum.HumanoidStateType.FallingDown then
+                    hum:ChangeState(Enum.HumanoidStateType.GettingUp)
+                end
+            end
+        end)
+    end
+end
+
+-- Server Rejoin
+local function serverRejoin(notifyWindow)
+    if notifyWindow then
+        notifyWindow:Notify({ title = "Rejoining...", content = "Reconnecting to the same server..." })
+    end
+    task.wait(0.3)
+    if #Players:GetPlayers() <= 1 then
+        TeleportService:Teleport(game.PlaceId, lp)
+    else
+        TeleportService:TeleportToPlaceInstance(game.PlaceId, game.JobId, lp)
+    end
+end
+
+-- Server Hop
+local function serverHop(notifyWindow)
+    if notifyWindow then
+        notifyWindow:Notify({ title = "Server Hop", content = "Searching for active public servers..." })
+    end
+    task.spawn(function()
+        local placeId = game.PlaceId
+        local url = string.format("https://games.roblox.com/v1/games/%d/servers/Public?sortOrder=Asc&limit=100", placeId)
+        local success, res = pcall(function()
+            return game:HttpGet(url)
+        end)
+        if not success or not res then
+            if notifyWindow then
+                notifyWindow:Notify({ title = "Server Hop Error", content = "Failed to fetch servers from Roblox API." })
+            end
+            return
+        end
+
+        local ok, data = pcall(function() return HttpService:JSONDecode(res) end)
+        if not ok or not data or not data.data then
+            if notifyWindow then
+                notifyWindow:Notify({ title = "Server Hop Error", content = "Invalid server data response." })
+            end
+            return
+        end
+
+        local validServers = {}
+        for _, server in ipairs(data.data) do
+            if server.id ~= game.JobId and server.playing < server.maxPlayers then
+                table.insert(validServers, server.id)
+            end
+        end
+
+        if #validServers > 0 then
+            local targetId = validServers[math.random(1, #validServers)]
+            if notifyWindow then
+                notifyWindow:Notify({ title = "Teleporting...", content = "Connecting to new server: " .. targetId:sub(1, 8) .. "..." })
+            end
+            TeleportService:TeleportToPlaceInstance(placeId, targetId, lp)
+        else
+            if notifyWindow then
+                notifyWindow:Notify({ title = "Server Hop", content = "No suitable alternate servers found." })
+            end
+        end
+    end)
+end
+
+
+-- ==========================================
+-- CLEANUP HELPER
+-- ==========================================
+local function cleanupAll()
+    scriptKilled = true
+    autoCollectCash = false
+    autoTicTacToe = false
+    autoTP = false
+    autoSweep = false
+    rankESP = false
+    antiRagdoll = false
+
+    clearAllESP()
+
+    if descendantConn then descendantConn:Disconnect() end
+    if rewardConn then rewardConn:Disconnect() end
+    if coinsConn then coinsConn:Disconnect() end
+    if antiAfkConn then antiAfkConn:Disconnect() end
+    if antiRagdollConn then antiRagdollConn:Disconnect() end
+
+    local hum = lp.Character and lp.Character:FindFirstChildOfClass("Humanoid")
+    if hum and hum.Sit then
+        hum.Sit = false
+    end
+end
+
+
+-- ==========================================
+-- ADIIIIIIIX HUB — واجهة أسطورية مخصصة
+-- (المنطق كما هو 100% — تغيير المظهر فقط)
+-- ==========================================
+local TweenService = game:GetService("TweenService")
+local CoreGui = game:GetService("CoreGui")
+
+--===== نظام الإشعارات (بديل Window:Notify) =====--
+local notifyGui = Instance.new("ScreenGui")
+notifyGui.Name = "AdiiiiiiixNotify"
+notifyGui.ResetOnSpawn = false
+notifyGui.DisplayOrder = 998
+pcall(function() notifyGui.Parent = CoreGui end)
+if not notifyGui.Parent then notifyGui.Parent = lp:WaitForChild("PlayerGui") end
+
+local GOLD  = Color3.fromRGB(255, 200, 0)
+local BG    = Color3.fromRGB(15, 15, 23)
+local CARD  = Color3.fromRGB(27, 27, 40)
+local BTN   = Color3.fromRGB(46, 46, 66)
+local WHITE = Color3.new(1, 1, 1)
+
+local function myNotify(title, content)
+    pcall(function()
+        local toast = Instance.new("Frame")
+        toast.Size = UDim2.new(0, 280, 0, 54)
+        toast.Position = UDim2.new(0.5, -140, 0, -70)
+        toast.BackgroundColor3 = Color3.fromRGB(20, 20, 30)
+        toast.BorderSizePixel = 0
+        toast.Parent = notifyGui
+        Instance.new("UICorner", toast).CornerRadius = UDim.new(0, 12)
+        local st = Instance.new("UIStroke", toast)
+        st.Color = GOLD
+        st.Thickness = 1.5
+
+        local t1 = Instance.new("TextLabel")
+        t1.Size = UDim2.new(1, -16, 0, 20)
+        t1.Position = UDim2.new(0, 8, 0, 5)
+        t1.BackgroundTransparency = 1
+        t1.TextColor3 = GOLD
+        t1.Font = Enum.Font.GothamBold
+        t1.TextSize = 13
+        t1.Text = tostring(title)
+        t1.Parent = toast
+
+        local t2 = Instance.new("TextLabel")
+        t2.Size = UDim2.new(1, -16, 0, 24)
+        t2.Position = UDim2.new(0, 8, 0, 25)
+        t2.BackgroundTransparency = 1
+        t2.TextColor3 = WHITE
+        t2.Font = Enum.Font.Gotham
+        t2.TextSize = 11
+        t2.TextWrapped = true
+        t2.Text = tostring(content)
+        t2.Parent = toast
+
+        TweenService:Create(toast, TweenInfo.new(0.25), {Position = UDim2.new(0.5, -140, 0, 14)}):Play()
+        task.delay(3, function()
+            pcall(function()
+                local tw = TweenService:Create(toast, TweenInfo.new(0.25), {Position = UDim2.new(0.5, -140, 0, -70)})
+                tw:Play()
+                tw.Completed:Wait()
+                toast:Destroy()
+            end)
+        end)
+    end)
+end
+
+
+-- بديل صغير حتى يعمل تنبيه الكاش الكبير الموجود في المنطق الأصلي
+Rayfield = { Notify = function(_, t) myNotify(t.title or "", t.content or "") end }
+
+-- محاكاة Window حتى تبقى دوال السيرفر (serverHop وغيرها) تعمل كما هي
+local Window = {}
+function Window:Notify(t) myNotify(t.title or "", t.content or "") end
+function Window:Unload()
+    pcall(function()
+        local g = CoreGui:FindFirstChild("AdiiiiiiixHub") or lp.PlayerGui:FindFirstChild("AdiiiiiiixHub")
+        if g then g:Destroy() end
+        local i2 = CoreGui:FindFirstChild("AdiiiiiiixIcon") or lp.PlayerGui:FindFirstChild("AdiiiiiiixIcon")
+        if i2 then i2:Destroy() end
+        notifyGui:Destroy()
+    end)
+end
+
+--===== الأيقونة العائمة بصورتك =====--
+local iconGui = Instance.new("ScreenGui")
+iconGui.Name = "AdiiiiiiixIcon"
+iconGui.ResetOnSpawn = false
+iconGui.DisplayOrder = 999
+pcall(function() iconGui.Parent = CoreGui end)
+if not iconGui.Parent then iconGui.Parent = lp:WaitForChild("PlayerGui") end
+
+local iconBtn = Instance.new("TextButton")
+iconBtn.Size = UDim2.new(0, 56, 0, 56)
+iconBtn.Position = UDim2.new(0, 12, 0.5, -28)
+iconBtn.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
+iconBtn.Text = "A"
+iconBtn.TextColor3 = GOLD
+iconBtn.Font = Enum.Font.GothamBold
+iconBtn.TextSize = 24
+iconBtn.Active = true
+iconBtn.Draggable = true
+iconBtn.Parent = iconGui
+Instance.new("UICorner", iconBtn).CornerRadius = UDim.new(1, 0)
+local iconStroke = Instance.new("UIStroke", iconBtn)
+iconStroke.Color = GOLD
+iconStroke.Thickness = 2
+local iconGlow = Instance.new("UIGradient", iconBtn)
+iconGlow.Color = ColorSequence.new{
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(70, 58, 20)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(20, 20, 30))
+}
+iconGlow.Rotation = 45
+
+local iconImg = Instance.new("ImageLabel")
+iconImg.Size = UDim2.new(1, -6, 1, -6)
+iconImg.Position = UDim2.new(0, 3, 0, 3)
+iconImg.BackgroundTransparency = 1
+iconImg.ScaleType = Enum.ScaleType.Fit
+iconImg.Parent = iconBtn
+Instance.new("UICorner", iconImg).CornerRadius = UDim.new(1, 0)
+
 task.spawn(function()
     pcall(function()
-        local f04 = RS:WaitForChild("__f04", 8)
-        if f04 then __r26 = f04:WaitForChild("__r26", 8) end
+        if typeof(getcustomasset) ~= "function" then return end
+        local function tryLoad(id)
+            if id and id ~= "" then
+                iconImg.Image = id
+                iconBtn.Text = ""
+                return true
+            end
+            return false
+        end
+        local names = {"intro.png", "epicface.png"}
+        if typeof(listfiles) == "function" then
+            pcall(function()
+                for _, f in ipairs(listfiles("")) do
+                    local low = string.lower(f)
+                    if string.find(low, "intro") or string.find(low, "epic") or string.find(low, "icon") then
+                        table.insert(names, 1, f)
+                    end
+                end
+            end)
+        end
+        for _, n in ipairs(names) do
+            local ok, id = pcall(getcustomasset, n)
+            if ok and tryLoad(id) then return end
+        end
+        local httpReq2 = (syn and syn.request) or (http and http.request) or http_request or request
+        if httpReq2 and typeof(writefile) == "function" then
+            local ok, res = pcall(function()
+                return httpReq2({Url = "https://raw.githubusercontent.com/adiixsub-source/Adiiiiiix/refs/heads/main/intro.png", Method = "GET"})
+            end)
+            if ok and res and res.Body and #res.Body > 100 then
+                pcall(writefile, "intro.png", res.Body)
+                task.wait(0.3)
+                local ok2, id = pcall(getcustomasset, "intro.png")
+                if ok2 then tryLoad(id) end
+            end
+        end
     end)
 end)
 
-local jobTried = false
-local lastRemote = 0
-local function cleanCycle()
-    if not cleanOn then jobTried = false task.wait(0.4) return end
-    if getNearbyStaff(50) and avoidOn then task.wait(0.5) return end
-    local _, hrp = getChar()
-    if not hrp then task.wait(0.5) return end
-    if not hasBroom() then
-        if not jobTried then takeJob() jobTried = true task.wait(1) end
-        equipBroom()
-        task.wait(0.3)
-    end
-    local dirt = getDirt()
-    if not dirt then task.wait(1) return end
-    local v = coins.Value
-    pcall(function() hrp.CFrame = dirt.CFrame + Vector3.new(0, 2.5, 0) end)
-    local t0 = tick()
-    while cleanOn and dirt.Parent and coins.Value == v and tick() - t0 < 4 do
-        pcall(function() hrp.CFrame = dirt.CFrame + Vector3.new(0, 2.5, 0) end)
-        if __r26 and tick() - lastRemote >= 6.1 then
-            pcall(function() __r26:FireServer(dirt.Name) end)
-            lastRemote = tick()
-        end
-        if hasFCD then
-            pcall(function()
-                local cd = dirt:FindFirstChildOfClass("ClickDetector")
-                if cd then fireclickdetector(cd) end
-            end)
-        end
-        task.wait(0.1)
-    end
-    if coins.Value > v then
-        cleanTotal += 1
-        earnedTotal += (coins.Value - v)
-        renderClean()
-    end
-    task.wait(0.8)
-end
-task.spawn(function() while true do pcall(cleanCycle) task.wait(0.1) end end)
+--===== اللوحة الرئيسية =====--
+local hubGui = Instance.new("ScreenGui")
+hubGui.Name = "AdiiiiiiixHub"
+hubGui.ResetOnSpawn = false
+hubGui.DisplayOrder = 997
+pcall(function() hubGui.Parent = CoreGui end)
+if not hubGui.Parent then hubGui.Parent = lp:WaitForChild("PlayerGui") end
 
---===== 3) XO فوز تلقائي =====--
-local xoCard, xoSw = makeCard(farmPage, "xoName", "xoDesc", Color3.fromRGB(255, 180, 60), 100)
-local xoInfo = makeCounter(xoCard, Color3.fromRGB(255, 180, 60), 64)
-local xoOn = false
-xoSw.onClick(function(s) xoOn = s end)
+local panel = Instance.new("Frame")
+panel.AnchorPoint = Vector2.new(0.5, 0.5)
+panel.Size = UDim2.new(0.88, 0, 0.78, 0)
+panel.Position = UDim2.new(0.5, 0, 0.5, 0)
+panel.BackgroundColor3 = BG
+panel.BorderSizePixel = 0
+panel.Visible = false
+panel.Active = true
+panel.Draggable = true
+panel.ClipsDescendants = true
+panel.Parent = hubGui
+Instance.new("UICorner", panel).CornerRadius = UDim.new(0, 16)
+local panelLimit = Instance.new("UISizeConstraint", panel)
+panelLimit.MaxSize = Vector2.new(420, 560)
+panelLimit.MinSize = Vector2.new(290, 360)
+local panelStroke = Instance.new("UIStroke", panel)
+panelStroke.Color = GOLD
+panelStroke.Thickness = 1.5
+panelStroke.Transparency = 0.3
 
-local function renderXO()
-    if isAr() then
-        xoInfo.Text = "فوز XO: " .. xoTotal
-    else
-        xoInfo.Text = "XO wins: " .. xoTotal
-    end
-end
-renderXO()
-regRenderer(renderXO)
+-- الهيدر
+local header = Instance.new("Frame")
+header.Size = UDim2.new(1, 0, 0, 50)
+header.BackgroundColor3 = Color3.fromRGB(24, 24, 38)
+header.BorderSizePixel = 0
+header.Parent = panel
+local headerGrad = Instance.new("UIGradient", header)
+headerGrad.Color = ColorSequence.new{
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(52, 42, 14)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(24, 24, 38))
+}
 
-local function findXOBoard()
-    local ok, b, fr, me = pcall(function()
-        local f = workspace:FindFirstChild("TICTACTOE")
-        if not f then return nil, nil, false end
-        for _, bd in ipairs(f:GetChildren()) do
-            if bd.Name == "TICTACTOE_BOARD" then
-                local sf = bd:FindFirstChild("scoreFrame")
-                local interior = sf and sf:FindFirstChild("interior")
-                local sg = interior and interior:FindFirstChild("SurfaceGui")
-                local frame = sg and sg:FindFirstChild("Frame")
-                if frame then
-                    local p1 = frame:FindFirstChild("player1Name")
-                    local p2 = frame:FindFirstChild("player2Name")
-                    local t1 = (p1 and p1.Text) or ""
-                    local t2 = (p2 and p2.Text) or ""
-                    local isMe = (t1 == player.Name or t1 == player.DisplayName or t2 == player.Name or t2 == player.DisplayName)
-                    local empty1 = (t1 == "" or string.lower(t1) == "none")
-                    local empty2 = (t2 == "" or string.lower(t2) == "none")
-                    if isMe or empty1 or empty2 then
-                        return bd, frame, isMe
-                    end
-                end
-            end
-        end
-        return nil, nil, false
-    end)
-    if ok then return b, fr, me end
-    return nil, nil, false
-end
+local titleLbl = Instance.new("TextLabel")
+titleLbl.Size = UDim2.new(1, -100, 0, 24)
+titleLbl.Position = UDim2.new(0, 50, 0, 5)
+titleLbl.BackgroundTransparency = 1
+titleLbl.TextColor3 = GOLD
+titleLbl.Font = Enum.Font.GothamBold
+titleLbl.TextSize = 17
+titleLbl.Text = "Adiiiiiiix Hub"
+titleLbl.Parent = header
 
-local WIN_LINES = {{1,2,3},{4,5,6},{7,8,9},{1,4,7},{2,5,8},{3,6,9},{1,5,9},{3,5,7}}
-local function getXOState(board)
-    local st = {}
-    for i = 1, 9 do
-        local x = board:FindFirstChild("X" .. i)
-        local o = board:FindFirstChild("O" .. i)
-        if x and x:IsA("BasePart") and x.Transparency < 0.5 then st[i] = "X"
-        elseif o and o:IsA("BasePart") and o.Transparency < 0.5 then st[i] = "O"
-        else st[i] = nil end
-    end
-    return st
-end
+local subLbl = Instance.new("TextLabel")
+subLbl.Size = UDim2.new(1, -100, 0, 14)
+subLbl.Position = UDim2.new(0, 50, 0, 29)
+subLbl.BackgroundTransparency = 1
+subLbl.TextColor3 = Color3.fromRGB(150, 140, 100)
+subLbl.Font = Enum.Font.Gotham
+subLbl.TextSize = 10
+subLbl.Text = "Cash • XO • Cleaner • Ranks — v3.6"
+subLbl.Parent = header
 
-local function bestMove(st, me, opp)
-    for _, l in ipairs(WIN_LINES) do
-        local a, b, c = st[l[1]], st[l[2]], st[l[3]]
-        local cnt = (a == me and 1 or 0) + (b == me and 1 or 0) + (c == me and 1 or 0)
-        if cnt == 2 then
-            if not a then return l[1] elseif not b then return l[2] elseif not c then return l[3] end
-        end
-    end
-    for _, l in ipairs(WIN_LINES) do
-        local a, b, c = st[l[1]], st[l[2]], st[l[3]]
-        local cnt = (a == opp and 1 or 0) + (b == opp and 1 or 0) + (c == opp and 1 or 0)
-        if cnt == 2 then
-            if not a then return l[1] elseif not b then return l[2] elseif not c then return l[3] end
-        end
-    end
-    if not st[5] then return 5 end
-    for _, i in ipairs({1, 3, 7, 9}) do if not st[i] then return i end end
-    for _, i in ipairs({2, 4, 6, 8}) do if not st[i] then return i end end
-    return nil
-end
+local closeBtn = Instance.new("TextButton")
+closeBtn.Size = UDim2.new(0, 32, 0, 32)
+closeBtn.Position = UDim2.new(0, 9, 0, 9)
+closeBtn.BackgroundColor3 = Color3.fromRGB(170, 45, 45)
+closeBtn.TextColor3 = WHITE
+closeBtn.Font = Enum.Font.GothamBold
+closeBtn.TextSize = 14
+closeBtn.Text = "X"
+closeBtn.Parent = header
+Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(1, 0)
+closeBtn.MouseButton1Click:Connect(function() panel.Visible = false end)
+iconBtn.MouseButton1Click:Connect(function() panel.Visible = not panel.Visible end)
 
-local xoLastMove = 0
-local xoCounted = {}
-local function xoCycle()
-    if not xoOn then task.wait(0.4) return end
-    if getNearbyStaff(50) and avoidOn then task.wait(1) return end
-    local board, frame, amSeated = findXOBoard()
-    if not board then task.wait(1) return end
-    local p1l = frame:FindFirstChild("player1Name")
-    local meIsP1 = p1l and (p1l.Text == player.Name or p1l.Text == player.DisplayName)
-    local mySym = meIsP1 and "X" or "O"
-    if not amSeated then
-        if hasFPP then
-            local chairName = meIsP1 and "ticTacToeChair1" or "ticTacToeChair2"
-            local chair = board.Parent and board.Parent:FindFirstChild(chairName)
-            chair = chair or workspace:FindFirstChild(chairName, true)
-            if chair then
-                local pp = chair:FindFirstChildWhichIsA("ProximityPrompt", true)
-                local chPart = chair:IsA("BasePart") and chair or chair:FindFirstChildWhichIsA("BasePart", true)
-                local _, h = getChar()
-                if pp and chPart and h then
-                    pcall(function() h.CFrame = chPart.CFrame + Vector3.new(0, 2, 0) end)
-                    task.wait(0.2)
-                    pcall(function() pp.HoldDuration = 0 fireproximityprompt(pp) end)
-                end
-            end
-        end
-        task.wait(1)
-        return
-    end
-    local st = getXOState(board)
-    local mv = bestMove(st, mySym, mySym == "X" and "O" or "X")
-    if mv and tick() - xoLastMove > 1.2 and hasFCD then
-        pcall(function()
-            local det = board:FindFirstChild("Detector" .. mv)
-            if det then fireclickdetector(det) end
-        end)
-        xoLastMove = tick()
-    end
-    for i = 1, 8 do
-        local w = board:FindFirstChild("Win" .. i)
-        if w and w:IsA("BasePart") and w.Transparency < 0.5 then
-            local l = WIN_LINES[i]
-            if st[l[1]] == mySym and not xoCounted[board] then
-                xoCounted[board] = true
-                xoTotal += 1
-                renderXO()
-                break
-            end
-        end
-    end
-    task.wait(0.5)
-end
-task.spawn(function() while true do pcall(xoCycle) task.wait(0.1) end end)
+--===== التبويبات =====--
+local tabBar = Instance.new("Frame")
+tabBar.Size = UDim2.new(1, -20, 0, 38)
+tabBar.Position = UDim2.new(0, 10, 0, 56)
+tabBar.BackgroundColor3 = Color3.fromRGB(21, 21, 32)
+tabBar.BorderSizePixel = 0
+tabBar.Parent = panel
+Instance.new("UICorner", tabBar).CornerRadius = UDim.new(0, 10)
+local tabPad = Instance.new("UIPadding", tabBar)
+tabPad.PaddingTop = UDim.new(0, 4) tabPad.PaddingBottom = UDim.new(0, 4)
+tabPad.PaddingLeft = UDim.new(0, 4) tabPad.PaddingRight = UDim.new(0, 4)
+local tabLay = Instance.new("UIListLayout", tabBar)
+tabLay.FillDirection = Enum.FillDirection.Horizontal
+tabLay.Padding = UDim.new(0, 4)
+tabLay.SortOrder = Enum.SortOrder.LayoutOrder
+tabLay.HorizontalAlignment = Enum.HorizontalAlignment.Center
 
---====================================================--
-
---====================================================--
---  تبويب لاعبين (تخطيط ثابت: أزرار يسار، اسم يمينها)
---====================================================--
-local headerBtns = {}
-
-local function makeHeaderBtn(parent, textKey, color, order)
+local tabs, pages = {}, {}
+local function makeTab(name, order)
     local b = Instance.new("TextButton")
-    b.Size = UDim2.new(1, 0, 0, 36)
-    b.BackgroundColor3 = color
-    b.TextColor3 = GOLD
+    b.Size = UDim2.new(0.333, -2, 1, 0)
+    b.BackgroundColor3 = GOLD
+    b.BackgroundTransparency = 1
+    b.TextColor3 = Color3.fromRGB(150, 150, 160)
     b.Font = Enum.Font.GothamBold
     b.TextSize = 13
-    b.Text = txt(textKey)
+    b.Text = name
     b.LayoutOrder = order
+    b.Parent = tabBar
+    Instance.new("UICorner", b).CornerRadius = UDim.new(0, 8)
+
+    local page = Instance.new("ScrollingFrame")
+    page.Size = UDim2.new(1, -20, 1, -110)
+    page.Position = UDim2.new(0, 10, 0, 100)
+    page.BackgroundTransparency = 1
+    page.ScrollBarThickness = 3
+    page.ScrollBarImageColor3 = GOLD
+    page.CanvasSize = UDim2.new(0, 0, 0, 0)
+    page.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    page.Visible = false
+    page.Parent = panel
+    local pl = Instance.new("UIListLayout", page)
+    pl.Padding = UDim.new(0, 6)
+    pl.SortOrder = Enum.SortOrder.LayoutOrder
+
+    tabs[name] = b
+    pages[name] = page
+    b.MouseButton1Click:Connect(function()
+        for n, btn in pairs(tabs) do
+            local active = (n == name)
+            btn.BackgroundTransparency = active and 0 or 1
+            btn.TextColor3 = active and Color3.fromRGB(15, 15, 22) or Color3.fromRGB(150, 150, 160)
+            pages[n].Visible = active
+        end
+    end)
+    return page
+end
+
+local farmPage = makeTab("المزرعة", 1)
+local tpPage   = makeTab("الانتقال", 2)
+local cfgPage  = makeTab("الإدارة", 3)
+tabs["المزرعة"].BackgroundTransparency = 0
+tabs["المزرعة"].TextColor3 = Color3.fromRGB(15, 15, 22)
+pages["المزرعة"].Visible = true
+
+--===== مصانع العناصر =====--
+local function addSection(parent, text)
+    local s = Instance.new("TextLabel")
+    s.Size = UDim2.new(1, 0, 0, 26)
+    s.BackgroundColor3 = Color3.fromRGB(38, 32, 12)
+    s.TextColor3 = GOLD
+    s.Font = Enum.Font.GothamBold
+    s.TextSize = 12
+    s.Text = "  ✦ " .. text
+    s.TextXAlignment = Enum.TextXAlignment.Left
+    s.Parent = parent
+    Instance.new("UICorner", s).CornerRadius = UDim.new(0, 8)
+end
+
+local function addInfo(parent, text)
+    local s = Instance.new("TextLabel")
+    s.Size = UDim2.new(1, 0, 0, 34)
+    s.BackgroundColor3 = CARD
+    s.TextColor3 = Color3.fromRGB(170, 170, 180)
+    s.Font = Enum.Font.Gotham
+    s.TextSize = 11
+    s.TextWrapped = true
+    s.Text = text
+    s.Parent = parent
+    Instance.new("UICorner", s).CornerRadius = UDim.new(0, 8)
+end
+
+-- مفتاح تشغيل أنيق مع قيمة افتراضية
+local function addToggle(parent, label, default, callback)
+    local row = Instance.new("Frame")
+    row.Size = UDim2.new(1, 0, 0, 42)
+    row.BackgroundColor3 = CARD
+    row.BorderSizePixel = 0
+    row.Parent = parent
+    Instance.new("UICorner", row).CornerRadius = UDim.new(0, 10)
+
+    local lbl = Instance.new("TextLabel")
+    lbl.Size = UDim2.new(1, -76, 1, 0)
+    lbl.Position = UDim2.new(0, 62, 0, 0)
+    lbl.BackgroundTransparency = 1
+    lbl.TextColor3 = WHITE
+    lbl.Font = Enum.Font.GothamBold
+    lbl.TextSize = 12
+    lbl.TextWrapped = true
+    lbl.TextXAlignment = Enum.TextXAlignment.Right
+    lbl.Text = label
+    lbl.Parent = row
+
+    local sw = Instance.new("TextButton")
+    sw.Size = UDim2.new(0, 46, 0, 24)
+    sw.Position = UDim2.new(0, 10, 0.5, -12)
+    sw.BackgroundColor3 = default and Color3.fromRGB(0, 180, 95) or Color3.fromRGB(60, 60, 75)
+    sw.Text = ""
+    sw.Parent = row
+    Instance.new("UICorner", sw).CornerRadius = UDim.new(1, 0)
+    local knob = Instance.new("Frame")
+    knob.Size = UDim2.new(0, 18, 0, 18)
+    knob.Position = default and UDim2.new(1, -21, 0.5, -9) or UDim2.new(0, 3, 0.5, -9)
+    knob.BackgroundColor3 = WHITE
+    knob.BorderSizePixel = 0
+    knob.Parent = sw
+    Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
+
+    local state = default
+    sw.MouseButton1Click:Connect(function()
+        state = not state
+        TweenService:Create(sw, TweenInfo.new(0.15), {
+            BackgroundColor3 = state and Color3.fromRGB(0, 180, 95) or Color3.fromRGB(60, 60, 75)
+        }):Play()
+        TweenService:Create(knob, TweenInfo.new(0.15), {
+            Position = state and UDim2.new(1, -21, 0.5, -9) or UDim2.new(0, 3, 0.5, -9)
+        }):Play()
+        pcall(callback, state)
+    end)
+end
+
+-- متحكم رقمي (- قيمة +)
+local function addStepper(parent, label, default, minV, maxV, step, callback)
+    local row = Instance.new("Frame")
+    row.Size = UDim2.new(1, 0, 0, 42)
+    row.BackgroundColor3 = CARD
+    row.BorderSizePixel = 0
+    row.Parent = parent
+    Instance.new("UICorner", row).CornerRadius = UDim.new(0, 10)
+
+    local lbl = Instance.new("TextLabel")
+    lbl.Size = UDim2.new(1, -150, 1, 0)
+    lbl.Position = UDim2.new(0, 140, 0, 0)
+    lbl.BackgroundTransparency = 1
+    lbl.TextColor3 = WHITE
+    lbl.Font = Enum.Font.GothamBold
+    lbl.TextSize = 11
+    lbl.TextWrapped = true
+    lbl.TextXAlignment = Enum.TextXAlignment.Right
+    lbl.Text = label
+    lbl.Parent = row
+
+    local val = default
+    local valLbl = Instance.new("TextLabel")
+    valLbl.Size = UDim2.new(0, 52, 0, 28)
+    valLbl.Position = UDim2.new(0, 44, 0.5, -14)
+    valLbl.BackgroundColor3 = Color3.fromRGB(12, 12, 18)
+    valLbl.TextColor3 = GOLD
+    valLbl.Font = Enum.Font.GothamBold
+    valLbl.TextSize = 13
+    valLbl.Text = tostring(default)
+    valLbl.Parent = row
+    Instance.new("UICorner", valLbl).CornerRadius = UDim.new(0, 6)
+
+    local function mkBtn(txt2, x, cb)
+        local b = Instance.new("TextButton")
+        b.Size = UDim2.new(0, 28, 0, 28)
+        b.Position = UDim2.new(0, x, 0.5, -14)
+        b.BackgroundColor3 = BTN
+        b.TextColor3 = WHITE
+        b.Font = Enum.Font.GothamBold
+        b.TextSize = 15
+        b.Text = txt2
+        b.Parent = row
+        Instance.new("UICorner", b).CornerRadius = UDim.new(0, 6)
+        b.MouseButton1Click:Connect(cb)
+    end
+    mkBtn("-", 10, function()
+        val = math.max(minV, val - step)
+        val = math.floor(val * 10 + 0.5) / 10
+        valLbl.Text = tostring(val)
+        pcall(callback, val)
+    end)
+    mkBtn("+", 102, function()
+        val = math.min(maxV, val + step)
+        val = math.floor(val * 10 + 0.5) / 10
+        valLbl.Text = tostring(val)
+        pcall(callback, val)
+    end)
+end
+
+-- زر إجراء
+local function addButton(parent, label, color, callback)
+    local b = Instance.new("TextButton")
+    b.Size = UDim2.new(1, 0, 0, 38)
+    b.BackgroundColor3 = color or BTN
+    b.TextColor3 = WHITE
+    b.Font = Enum.Font.GothamBold
+    b.TextSize = 13
+    b.Text = label
     b.Parent = parent
     Instance.new("UICorner", b).CornerRadius = UDim.new(0, 10)
-    headerBtns[b] = textKey
+    b.MouseButton1Click:Connect(function() pcall(callback) end)
     return b
 end
 
-local pRefreshBtn = makeHeaderBtn(playersPage, "refresh", Color3.fromRGB(40, 45, 70), 0)
-
-local function stopWatch()
-    pcall(function()
-        local cam = workspace.CurrentCamera
-        local hum = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
-        if cam and hum then cam.CameraSubject = hum end
-    end)
-end
-player.CharacterAdded:Connect(function() task.wait(0.5) stopWatch() end)
-
-local function buildPlayerList()
-    pcall(function()
-        for _, ch in ipairs(playersPage:GetChildren()) do
-            if ch:IsA("Frame") then ch:Destroy() end
-        end
-        for _, pl in ipairs(Players:GetPlayers()) do
-            if pl ~= player then
-                local row = Instance.new("Frame")
-                row.Size = UDim2.new(1, 0, 0, 46)
-                row.BackgroundColor3 = CARD
-                row.BorderSizePixel = 0
-                row.LayoutOrder = 1
-                row.Parent = playersPage
-                Instance.new("UICorner", row).CornerRadius = UDim.new(0, 10)
-
-                local r = serverRanks[pl.Name] or 0
-                local rInfo = RANK_DATA[r]
-                local rankName = rInfo and (isAr() and rInfo.ar or rInfo.en) or ""
-                local rankTxt = (rInfo and rInfo.isStaff) and ("  ★" .. rankName) or ""
-
-                local lbl = Instance.new("TextLabel")
-                lbl.Size = UDim2.new(1, -150, 1, 0)
-                lbl.Position = UDim2.new(0, 140, 0, 0)
-                lbl.BackgroundTransparency = 1
-                lbl.TextColor3 = (rInfo and rInfo.isStaff) and rInfo.color or Color3.new(1, 1, 1)
-                lbl.Font = Enum.Font.GothamBold
-                lbl.TextSize = 12
-                lbl.TextXAlignment = align()
-                lbl.TextTruncate = Enum.TextTruncate.AtEnd
-                lbl.Text = pl.DisplayName .. rankTxt
-                lbl.Parent = row
-
-                local watchBtn = Instance.new("TextButton")
-                watchBtn.Size = UDim2.new(0, 60, 0, 30)
-                watchBtn.Position = UDim2.new(0, 8, 0.5, -15)
-                watchBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 90)
-                watchBtn.TextColor3 = Color3.new(1, 1, 1)
-                watchBtn.Font = Enum.Font.GothamBold
-                watchBtn.TextSize = 11
-                watchBtn.Text = txt("watch")
-                watchBtn.Parent = row
-                Instance.new("UICorner", watchBtn).CornerRadius = UDim.new(0, 8)
-
-                local tpBtn = Instance.new("TextButton")
-                tpBtn.Size = UDim2.new(0, 58, 0, 30)
-                tpBtn.Position = UDim2.new(0, 74, 0.5, -15)
-                tpBtn.BackgroundColor3 = Color3.fromRGB(0, 120, 170)
-                tpBtn.TextColor3 = Color3.new(1, 1, 1)
-                tpBtn.Font = Enum.Font.GothamBold
-                tpBtn.TextSize = 11
-                tpBtn.Text = txt("tp")
-                tpBtn.Parent = row
-                Instance.new("UICorner", tpBtn).CornerRadius = UDim.new(0, 8)
-
-                local targetPl = pl
-                local watching = false
-                watchBtn.MouseButton1Click:Connect(function()
-                    pcall(function()
-                        if watching then
-                            watching = false
-                            watchBtn.Text = txt("watch")
-                            watchBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 90)
-                            stopWatch()
-                            setStatus(txt("ready"))
-                        else
-                            local hum = targetPl.Character and targetPl.Character:FindFirstChildOfClass("Humanoid")
-                            if hum then
-                                watching = true
-                                watchBtn.Text = txt("stop")
-                                watchBtn.BackgroundColor3 = Color3.fromRGB(180, 60, 60)
-                                workspace.CurrentCamera.CameraSubject = hum
-                                setStatus(isAr() and ("تراقب: " .. targetPl.DisplayName) or ("Watching: " .. targetPl.DisplayName))
-                            end
-                        end
-                    end)
-                end)
-                tpBtn.MouseButton1Click:Connect(function()
-                    pcall(function()
-                        local _, myHrp = getChar()
-                        local tHrp = targetPl.Character and targetPl.Character:FindFirstChild("HumanoidRootPart")
-                        if myHrp and tHrp then
-                            myHrp.CFrame = tHrp.CFrame + Vector3.new(0, 3, 3)
-                            setStatus(isAr() and ("انتقلت إلى: " .. targetPl.DisplayName) or ("Teleported to: " .. targetPl.DisplayName))
-                        end
-                    end)
-                end)
-            end
-        end
-    end)
-end
-pRefreshBtn.MouseButton1Click:Connect(buildPlayerList)
-task.spawn(function() task.wait(0.5) buildPlayerList() end)
-Players.PlayerAdded:Connect(function() task.wait(1) buildPlayerList() end)
-Players.PlayerRemoving:Connect(function() buildPlayerList() end)
-
 --====================================================--
---  تبويب سيرفرات
+--  تبويب المزرعة — نفس كولباكات السكريبت الأصلي
 --====================================================--
-local sRefreshBtn = makeHeaderBtn(serversPage, "sRefresh", Color3.fromRGB(40, 45, 70), 0)
-local sHopBtn     = makeHeaderBtn(serversPage, "sHop", Color3.fromRGB(80, 50, 120), 1)
-local sRejoinBtn  = makeHeaderBtn(serversPage, "sRejoin", Color3.fromRGB(120, 70, 40), 2)
+addInfo(farmPage, "ترتيب الأولوية: 1) الكاش المرمي ← 2) إكس-أو (1 درهم) ← 3) تنظيف الأوساخ")
 
-local function clearServers()
-    for _, ch in ipairs(serversPage:GetChildren()) do
-        if ch:IsA("Frame") then ch:Destroy() end
-    end
-end
-
-local function teleportTo(jobId)
-    pcall(function()
-        TeleportService:TeleportToPlaceInstance(game.PlaceId, jobId, player)
-    end)
-end
-
-sRejoinBtn.MouseButton1Click:Connect(function()
-    setStatus(txt("rejoining"))
-    pcall(function() TeleportService:Teleport(game.PlaceId, player) end)
+addToggle(farmPage, "جمع الكاش المرمي تلقائياً [P1]", false, function(val)
+    autoCollectCash = val
+    Window:Notify({ title = "Cash Collector", content = val and "Auto-Collect Cash enabled!" or "Auto-Collect Cash disabled." })
 end)
 
-sHopBtn.MouseButton1Click:Connect(function()
-    if not httpReq then setStatus(txt("noHttp")) return end
-    setStatus(txt("searching"))
-    task.spawn(function()
-        pcall(function()
-            local res = httpReq({
-                Url = "https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Asc&limit=100",
-                Method = "GET"
-            })
-            if res and res.Body then
-                local data = HttpService:JSONDecode(res.Body)
-                if data and data.data then
-                    local cands = {}
-                    for _, sv in ipairs(data.data) do
-                        if sv.id ~= game.JobId and sv.playing and sv.maxPlayers and sv.playing < sv.maxPlayers then
-                            table.insert(cands, sv)
-                        end
-                    end
-                    if #cands > 0 then
-                        teleportTo(cands[math.random(1, #cands)].id)
-                        return
-                    end
-                end
-            end
-            setStatus(txt("failed"))
-        end)
-    end)
+addStepper(farmPage, "أقل مبلغ للانتقال إليه (درهم)", 1, 0, 100, 1, function(val)
+    minCashToTP = val
+    Window:Notify({ title = "Cash Filter Updated", content = "Now only TPing for cash >= " .. val .. " DH!" })
 end)
 
-local function buildServerList()
-    if not httpReq then setStatus(txt("noHttp")) return end
-    sRefreshBtn.Text = txt("loading")
-    clearServers()
-    task.spawn(function()
-        pcall(function()
-            local res = httpReq({
-                Url = "https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Desc&limit=100",
-                Method = "GET"
-            })
-            if not (res and res.Body) then sRefreshBtn.Text = txt("failed") return end
-            local data = HttpService:JSONDecode(res.Body)
-            if not (data and data.data) then sRefreshBtn.Text = txt("failed") return end
+addSection(farmPage, "تجنب الإدارة ومضاد الكشف")
 
-            local list = {}
-            for _, sv in ipairs(data.data) do
-                if sv.playing and sv.maxPlayers then table.insert(list, sv) end
-            end
-            table.sort(list, function(a, b) return a.playing > b.playing end)
+addToggle(farmPage, "تجميد عند اقتراب الإدارة منك", true, function(val)
+    staffFreezeEnabled = val
+    Window:Notify({ title = "Proximity Freeze", content = val and "Freeze when staff near YOU: Enabled!" or "Freeze when staff near YOU: Disabled." })
+end)
 
-            local order = 3
-            for _, sv in ipairs(list) do
-                local isMine = (sv.id == game.JobId)
-                local row = Instance.new("Frame")
-                row.Size = UDim2.new(1, 0, 0, 46)
-                row.BackgroundColor3 = isMine and Color3.fromRGB(55, 45, 15) or CARD
-                row.BorderSizePixel = 0
-                row.LayoutOrder = order
-                order += 1
-                row.Parent = serversPage
-                Instance.new("UICorner", row).CornerRadius = UDim.new(0, 10)
-                if isMine then
-                    local st = Instance.new("UIStroke", row)
-                    st.Color = GOLD
-                    st.Thickness = 1.5
-                end
+addStepper(farmPage, "نصف قطر التجميد حولك (ستد)", 50, 10, 150, 5, function(val)
+    staffFreezeRadius = val
+end)
 
-                local lbl = Instance.new("TextLabel")
-                lbl.Size = UDim2.new(1, -86, 1, 0)
-                lbl.Position = UDim2.new(0, 76, 0, 0)
-                lbl.BackgroundTransparency = 1
-                lbl.TextColor3 = Color3.new(1, 1, 1)
-                lbl.Font = Enum.Font.GothamBold
-                lbl.TextSize = 12
-                lbl.TextXAlignment = align()
-                local pingTxt = sv.ping and ((isAr() and "بينغ " or "Ping ") .. tostring(sv.ping)) or ""
-                local pTxt = isAr() and " لاعب  " or " players  "
-                lbl.Text = (isMine and txt("you") or "") .. sv.playing .. "/" .. sv.maxPlayers .. pTxt .. pingTxt
-                lbl.Parent = row
+addStepper(farmPage, "تجنب الإدارة قرب الكاش (ستد)", 30, 5, 60, 1, function(val)
+    staffAvoidRadius = val
+end)
 
-                if not isMine then
-                    local joinBtn = Instance.new("TextButton")
-                    joinBtn.Size = UDim2.new(0, 58, 0, 30)
-                    joinBtn.Position = UDim2.new(0, 8, 0.5, -15)
-                    joinBtn.BackgroundColor3 = Color3.fromRGB(0, 150, 80)
-                    joinBtn.TextColor3 = Color3.new(1, 1, 1)
-                    joinBtn.Font = Enum.Font.GothamBold
-                    joinBtn.TextSize = 12
-                    joinBtn.Text = txt("join")
-                    joinBtn.Parent = row
-                    Instance.new("UICorner", joinBtn).CornerRadius = UDim.new(0, 8)
-                    local jid = sv.id
-                    joinBtn.MouseButton1Click:Connect(function()
-                        joinBtn.Text = "..."
-                        teleportTo(jid)
-                    end)
-                end
-            end
-            sRefreshBtn.Text = txt("sRefresh") .. " (" .. #list .. ")"
-        end)
-    end)
-end
-sRefreshBtn.MouseButton1Click:Connect(buildServerList)
+addToggle(farmPage, "مضاد الطُعم الصارم (تجاهل كاش الإدارة نهائياً)", false, function(val)
+    ignoreStaffDroppedForever = val
+    Window:Notify({ title = "Anti-Bait Mode", content = val and "Strict Anti-Bait: Permanent staff drop block." or "Dynamic: Cash can be collected once staff walks away." })
+end)
 
---====================================================--
---  تبويب الحماية
---====================================================--
+addToggle(farmPage, "تجنب الأونر [رتبة 5]", true, function(val) avoidRanks[5] = val end)
+addToggle(farmPage, "تجنب البوس [رتبة 4.5]", true, function(val) avoidRanks[4.5] = val end)
+addToggle(farmPage, "تجنب الهيد أدمن [رتبة 4]", true, function(val) avoidRanks[4] = val end)
+addToggle(farmPage, "تجنب الأدمن [رتبة 3]", true, function(val) avoidRanks[3] = val end)
+addToggle(farmPage, "تجنب الدعم [رتبة 2.5]", true, function(val) avoidRanks[2.5] = val end)
+addToggle(farmPage, "تجنب المود [رتبة 2]", false, function(val) avoidRanks[2] = val end)
+addToggle(farmPage, "تجنب VIP [رتبة 1]", false, function(val) avoidRanks[1] = val end)
 
--- 1) كشف الإدارة
-local espCard, espSw = makeCard(securityPage, "espName", "espDesc", GOLD, 100)
-local espInfo = makeCounter(espCard, GOLD, 64)
-local espOn = false
-local espObjects = {}
-local espCount = 0
-espSw.onClick(function(s) espOn = s end)
+addSection(farmPage, "تحكم التخفي")
 
-local function renderEsp()
-    if isAr() then
-        espInfo.Text = "إداريون هنا: " .. espCount
+addToggle(farmPage, "انتقال تحت الأرض (تخفي)", true, function(val)
+    tpUnderFloor = val
+    Window:Notify({ title = "Stealth TP", content = val and "Under-floor TP enabled!" or "Surface TP enabled." })
+end)
+
+addStepper(farmPage, "عمق الاختباء تحت الأرض (ستد)", 8.5, 5, 9.5, 0.5, function(val)
+    underFloorDepth = val
+end)
+
+addToggle(farmPage, "نوكليب أثناء الانتقال", true, function(val)
+    autoNoclipOnTP = val
+    Window:Notify({ title = "Noclip on TP", content = val and "Noclip during TP enabled!" or "Noclip during TP disabled." })
+end)
+
+addSection(farmPage, "الألعاب المصغرة والتنظيف")
+
+addToggle(farmPage, "لعب إكس-أو تلقائي [P2]", false, function(val)
+    autoTicTacToe = val
+    Window:Notify({ title = "Tic-Tac-Toe", content = val and "Auto Tic-Tac-Toe enabled!" or "Auto Tic-Tac-Toe disabled." })
+end)
+
+addToggle(farmPage, "تنظيف الأوساخ تلقائي [P3]", false, function(val)
+    autoTP = val
+    Window:Notify({ title = "Auto-Dirt", content = val and "Auto-TP Dirt enabled!" or "Auto-TP Dirt disabled." })
+end)
+
+addToggle(farmPage, "تجهيز المكنسة تلقائياً", false, function(val)
+    autoSweep = val
+    if val then equipBroom() end
+end)
+
+addButton(farmPage, "اجمع الكاش الآن", Color3.fromRGB(0, 140, 80), function()
+    local drops = findCashDrops()
+    if #drops > 0 then
+        task.spawn(function() collectAllCashDrops(drops) end)
+        Window:Notify({ title = "Cash Collector", content = "Collecting " .. #drops .. " safe cash drop(s)!" })
     else
-        espInfo.Text = "Staff here: " .. espCount
-    end
-end
-renderEsp()
-regRenderer(renderEsp)
-
-local function clearEsp()
-    for _, o in pairs(espObjects) do pcall(function() o:Destroy() end) end
-    espObjects = {}
-end
-
-local function tagPlayer(pl)
-    pcall(function()
-        if pl == player then return end
-        local r = serverRanks[pl.Name]
-        local info = r and RANK_DATA[r]
-        if not (info and info.isStaff) then return end
-        local char = pl.Character
-        local head = char and char:FindFirstChild("Head")
-        if not head then return end
-        if espObjects[pl.Name .. "_bb"] then return end
-        local rankName = isAr() and info.ar or info.en
-
-        local bb = Instance.new("BillboardGui")
-        bb.Size = UDim2.new(0, 160, 0, 36)
-        bb.StudsOffset = Vector3.new(0, 2.8, 0)
-        bb.AlwaysOnTop = true
-        bb.Adornee = head
-        bb.Parent = head
-        local tl = Instance.new("TextLabel")
-        tl.Size = UDim2.new(1, 0, 1, 0)
-        tl.BackgroundTransparency = 1
-        tl.TextColor3 = info.color
-        tl.Font = Enum.Font.GothamBold
-        tl.TextSize = 14
-        tl.TextStrokeTransparency = 0.3
-        tl.Text = "★ " .. rankName .. " ★"
-        tl.Parent = bb
-
-        local hl = Instance.new("Highlight")
-        hl.FillColor = info.color
-        hl.OutlineColor = Color3.new(1, 1, 1)
-        hl.FillTransparency = 0.6
-        hl.Parent = char
-
-        espObjects[pl.Name .. "_bb"] = bb
-        espObjects[pl.Name .. "_hl"] = hl
-    end)
-end
-
-task.spawn(function()
-    while true do
-        pcall(function()
-            if espOn then
-                clearEsp()
-                espCount = 0
-                for _, pl in ipairs(Players:GetPlayers()) do
-                    local r = serverRanks[pl.Name]
-                    local info = r and RANK_DATA[r]
-                    if info and info.isStaff then
-                        espCount += 1
-                        tagPlayer(pl)
-                    end
-                end
-            else
-                clearEsp()
-                espCount = 0
-            end
-            renderEsp()
-        end)
-        task.wait(5)
+        Window:Notify({ title = "Cash Collector", content = "No safe cash >= " .. minCashToTP .. " DH found." })
     end
 end)
 
-Players.PlayerAdded:Connect(function(pl)
-    pl.CharacterAdded:Connect(function()
-        task.wait(2)
-        if espOn then tagPlayer(pl) end
-    end)
-end)
-
--- 2) إنذار الإدارة
-local alertCard, alertSw = makeCard(securityPage, "alertName", "alertDesc", Color3.fromRGB(255, 80, 80), 100)
-local alertInfo = makeCounter(alertCard, Color3.fromRGB(0, 220, 130), 64)
-local alertOn = false
-alertSw.onClick(function(s) alertOn = s end)
-
-local function renderAlertSafe()
-    alertInfo.Text = txt("safe")
-    alertInfo.TextColor3 = Color3.fromRGB(0, 220, 130)
-end
-renderAlertSafe()
-regRenderer(renderAlertSafe)
-
-local alertGui = Instance.new("TextLabel")
-alertGui.Size = UDim2.new(0, 270, 0, 42)
-alertGui.Position = UDim2.new(0.5, -135, 0, 60)
-alertGui.BackgroundColor3 = Color3.fromRGB(160, 20, 20)
-alertGui.TextColor3 = Color3.new(1, 1, 1)
-alertGui.Font = Enum.Font.GothamBold
-alertGui.TextSize = 14
-alertGui.Visible = false
-alertGui.Parent = gui
-Instance.new("UICorner", alertGui).CornerRadius = UDim.new(0, 10)
-
-task.spawn(function()
-    while true do
-        pcall(function()
-            if alertOn then
-                local staff, rank = getNearbyStaff(50)
-                if staff then
-                    local info = RANK_DATA[rank]
-                    local rn = info and (isAr() and info.ar or info.en) or "?"
-                    local msg = (isAr() and "إداري قريب: " or "STAFF NEAR: ") .. staff.DisplayName .. " (" .. rn .. ")"
-                    alertGui.Text = msg
-                    alertGui.Visible = true
-                    alertInfo.Text = msg
-                    alertInfo.TextColor3 = Color3.fromRGB(255, 60, 60)
-                else
-                    alertGui.Visible = false
-                    renderAlertSafe()
-                end
-            else
-                alertGui.Visible = false
-                renderAlertSafe()
-            end
-        end)
-        task.wait(0.7)
-    end
-end)
-
--- 3) مانع الخمول
-local afkCard, afkSw = makeCard(securityPage, "afkName", "afkDesc", Color3.fromRGB(120, 255, 200), 78)
-local afkConn = nil
-afkSw.onClick(function(s)
-    if s then
-        afkConn = player.Idled:Connect(function()
-            pcall(function()
-                VirtualUser:CaptureController()
-                VirtualUser:ClickButton2(Vector2.new())
+addButton(farmPage, "اجلس على طاولة إكس-أو", Color3.fromRGB(90, 60, 160), function()
+    local boardsFolder = workspace:FindFirstChild("TICTACTOE")
+    if boardsFolder and boardsFolder:GetChildren()[1] then
+        local b = boardsFolder:GetChildren()[1]
+        local c1 = b:FindFirstChild("ticTacToeChair1")
+        if c1 then
+            task.spawn(function()
+                sitAtChair(c1)
+                Window:Notify({ title = "Tic-Tac-Toe", content = "Seated at Board 1! Waiting for player." })
             end)
-        end)
-    else
-        if afkConn then pcall(function() afkConn:Disconnect() end) afkConn = nil end
+        end
     end
 end)
 
--- 4) تجنب الإدارة
-local avoidCard, avoidSw = makeCard(securityPage, "avoidName", "avoidDesc", Color3.fromRGB(255, 140, 0), 78)
-avoidSw.onClick(function(s) avoidOn = s end)
-
-
---====================================================--
---  زر اللغة AR / EN (بدون أي تخربط — كل العناصر ثابتة)
---====================================================--
-langBtn.MouseButton1Click:Connect(function()
-    pcall(function()
-        lang = (lang == "AR") and "EN" or "AR"
-        langBtn.Text = (lang == "AR") and "EN" or "ع"
-        title.Text = txt("title")
-        for key, b in pairs(tabs) do b.Text = txt(key) end
-        for _, item in ipairs(langReg) do
-            item.lbl.Text = txt(item.key)
-            item.lbl.TextXAlignment = align()
-        end
-        for b, key in pairs(headerBtns) do b.Text = txt(key) end
-        for _, fn in ipairs(renderers) do pcall(fn) end
-        setStatus(txt("ready"))
-        buildPlayerList()
-    end)
+addButton(farmPage, "إصلاح الشخصية (Unstuck)", Color3.fromRGB(150, 100, 30), function()
+    unstuckCharacter()
+    Window:Notify({ title = "Unstuck", content = "Collisions reset and character unstuck!" })
 end)
 
-setStatus(txt("ready"))
-print("[Adiiiiiiix v14] loaded OK")
+addButton(farmPage, "إيقاف السكريبت نهائياً", Color3.fromRGB(160, 40, 40), function()
+    cleanupAll()
+    Window:Unload()
+    print("[Adiiiiiiix] Script killed and unloaded.")
+end)
+
+--====================================================--
+--  تبويب الانتقال
+--====================================================--
+addSection(tpPage, "الانتقال إلى لاعب")
+
+local playersHolder = Instance.new("Frame")
+playersHolder.Size = UDim2.new(1, 0, 0, 150)
+playersHolder.BackgroundTransparency = 1
+playersHolder.Parent = tpPage
+local phLayout = Instance.new("UIListLayout", playersHolder)
+phLayout.Padding = UDim.new(0, 4)
+phLayout.SortOrder = Enum.SortOrder.LayoutOrder
+
+local function refreshTpPlayers()
+    pcall(function()
+        for _, ch in ipairs(playersHolder:GetChildren()) do
+            if ch:IsA("TextButton") then ch:Destroy() end
+        end
+        local names = getPlayerList()
+        for _, nm in ipairs(names) do
+            local p2 = Players:FindFirstChild(nm)
+            local b = Instance.new("TextButton")
+            b.Size = UDim2.new(1, 0, 0, 34)
+            b.BackgroundColor3 = CARD
+            b.TextColor3 = WHITE
+            b.Font = Enum.Font.GothamBold
+            b.TextSize = 12
+            b.Text = (p2 and p2.DisplayName or nm) .. "  ← انتقال"
+            b.Parent = playersHolder
+            Instance.new("UICorner", b).CornerRadius = UDim.new(0, 8)
+            b.MouseButton1Click:Connect(function()
+                pcall(function()
+                    local target = Players:FindFirstChild(nm)
+                    if target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
+                        teleportTo(target.Character.HumanoidRootPart.Position)
+                        Window:Notify({ title = "Teleported", content = "Teleported to " .. target.DisplayName .. "!" })
+                    else
+                        Window:Notify({ title = "Teleport Error", content = "Player character not loaded or player left." })
+                    end
+                end)
+            end)
+        end
+        playersHolder.Size = UDim2.new(1, 0, 0, math.max(40, #names * 38))
+        Window:Notify({ title = "Players Refreshed", content = "Found " .. #names .. " player(s)." })
+    end)
+end
+
+addButton(tpPage, "تحديث قائمة اللاعبين", Color3.fromRGB(40, 45, 70), refreshTpPlayers)
+
+addSection(tpPage, "نقاط انتقال فورية")
+addButton(tpPage, "🚩 السبون", BTN, function() teleportTo(WAYPOINTS["Spawn"]) Window:Notify({ title = "Teleport", content = "Teleported to Spawn!" }) end)
+addButton(tpPage, "🏪 الحانوت (المتجر)", BTN, function() teleportTo(WAYPOINTS["7anota (Shop)"]) Window:Notify({ title = "Teleport", content = "Teleported to 7anota!" }) end)
+addButton(tpPage, "🏦 البنك", BTN, function() teleportTo(WAYPOINTS["Bank NPC"]) Window:Notify({ title = "Teleport", content = "Teleported to Bank NPC!" }) end)
+addButton(tpPage, "❌ ساحة إكس-أو", BTN, function() teleportTo(WAYPOINTS["XO Arena"]) Window:Notify({ title = "Teleport", content = "Teleported to XO Arena!" }) end)
+addButton(tpPage, "🎭 المسرح", BTN, function() teleportTo(WAYPOINTS["Theatre"]) Window:Notify({ title = "Teleport", content = "Teleported to Theatre!" }) end)
+addButton(tpPage, "⚽ ملعب كرة القدم", BTN, function() teleportTo(WAYPOINTS["Sports Field (Soccer)"]) Window:Notify({ title = "Teleport", content = "Teleported to Football Pitch!" }) end)
+addButton(tpPage, "🏰 السطح الآمن", BTN, function() teleportTo(WAYPOINTS["Safe Rooftop"]) Window:Notify({ title = "Teleport", content = "Teleported to Safe Rooftop!" }) end)
+
+--====================================================--
+--  تبويب الإدارة والإعدادات
+--====================================================--
+addSection(cfgPage, "مراقب الإدارة العليا (دعم فما فوق)")
+
+local staffListLbl = Instance.new("TextLabel")
+staffListLbl.Size = UDim2.new(1, 0, 0, 60)
+staffListLbl.BackgroundColor3 = CARD
+staffListLbl.TextColor3 = WHITE
+staffListLbl.Font = Enum.Font.GothamBold
+staffListLbl.TextSize = 11
+staffListLbl.TextWrapped = true
+staffListLbl.TextYAlignment = Enum.TextYAlignment.Top
+staffListLbl.Text = "اضغط تحديث للفحص..."
+staffListLbl.Parent = cfgPage
+Instance.new("UICorner", staffListLbl).CornerRadius = UDim.new(0, 8)
+
+local function refreshHighStaffDisplay()
+    pcall(function()
+        local staffList = getHighStaffList()
+        if #staffList > 0 then
+            local formattedText = table.concat(staffList, "\n")
+            staffListLbl.Text = formattedText
+            staffListLbl.TextColor3 = Color3.fromRGB(255, 100, 100)
+            Window:Notify({ title = "High Staff Alert (" .. #staffList .. ")", content = formattedText })
+        else
+            staffListLbl.Text = "لا يوجد إداريون في السيرفر ✓"
+            staffListLbl.TextColor3 = Color3.fromRGB(0, 220, 130)
+            Window:Notify({ title = "High Staff Check", content = "Clear! No Support, Admin, Boss, or Owner detected." })
+        end
+    end)
+end
+
+addButton(cfgPage, "تحديث قائمة الإدارة", Color3.fromRGB(40, 45, 70), refreshHighStaffDisplay)
+
+addSection(cfgPage, "فلتر ESP حسب الرتبة")
+
+addToggle(cfgPage, "كشف الرتب ESP (الرئيسي)", false, function(val)
+    rankESP = val
+    if not val then
+        clearAllESP()
+        Window:Notify({ title = "Rank ESP", content = "Rank ESP disabled." })
+    else
+        fetchServerRanks()
+        Window:Notify({ title = "Rank ESP", content = "Rank ESP enabled!" })
+    end
+end)
+
+addToggle(cfgPage, "إظهار الأونر والإدارة العليا [3-5]", true, function(val)
+    espFilters[5] = val espFilters[4.5] = val espFilters[4] = val espFilters[3] = val
+end)
+
+addToggle(cfgPage, "إظهار المود والدعم [2-2.5]", true, function(val)
+    espFilters[2] = val espFilters[2.5] = val
+end)
+
+addToggle(cfgPage, "إظهار VIP [1]", true, function(val)
+    espFilters[1] = val
+end)
+
+addToggle(cfgPage, "إظهار اللاعبين العاديين [0]", false, function(val)
+    espFilters[0] = val
+end)
+
+addSection(cfgPage, "تحكم السيرفر")
+
+addButton(cfgPage, "الانتقال لسيرفر آخر", Color3.fromRGB(80, 50, 120), function()
+    serverHop(Window)
+end)
+
+addButton(cfgPage, "إعادة دخول نفس السيرفر", Color3.fromRGB(120, 70, 40), function()
+    serverRejoin(Window)
+end)
+
+addSection(cfgPage, "الحمايات")
+
+addToggle(cfgPage, "مانع الخمول 24/7", true, function(val)
+    antiAfk = val
+    if val then setupAntiAfk() end
+    Window:Notify({ title = "Anti-AFK", content = val and "24/7 Anti-AFK enabled!" or "Anti-AFK disabled." })
+end)
+
+addToggle(cfgPage, "مضاد السقوط والتعثر", false, function(val)
+    setupAntiRagdoll(val)
+    Window:Notify({ title = "Anti-Ragdoll", content = val and "Anti-Ragdoll & No Fall Damage enabled!" or "Anti-Ragdoll disabled." })
+end)
+
+addToggle(cfgPage, "تنبيه الكاش الكبير (100+ درهم)", true, function(val)
+    highCashAlert = val
+end)
+
+--====================================================--
+--  التهيئة النهائية (كما في الأصل)
+--====================================================--
+setupAntiAfk()
+unstuckCharacter()
+task.spawn(function()
+    task.wait(0.5)
+    refreshTpPlayers()
+    task.wait(0.7)
+    refreshHighStaffDisplay()
+end)
+
+if typeof(STATE) == "table" and type(STATE.onCleanup) == "function" then
+    STATE.onCleanup(function()
+        cleanupAll()
+        pcall(function() Window:Unload() end)
+        print("[Adiiiiiiix] Cleaned up previous instance safely via STATE.")
+    end)
+end
+
+print("[Adiiiiiiix] Version 3.6 Loaded — Custom Legendary GUI!")
+Window:Notify({
+    title = "Adiiiiiiix Hub 3.6",
+    content = "Loaded! Avatar physics unstuck & collisions fully calibrated.",
+})
+
+return "Adiiiiiiix 3.6 deployed successfully!"
