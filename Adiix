@@ -17,6 +17,7 @@ local player           = Players.LocalPlayer
 local coins            = player:WaitForChild("leaderstats"):WaitForChild("Coins")
 
 local hasFPP  = (typeof(fireproximityprompt) == "function")
+local hasFTI  = (typeof(firetouchinterest) == "function")
 local hasFCD  = (typeof(fireclickdetector) == "function")
 local httpReq = (syn and syn.request) or (http and http.request) or http_request or request
 
@@ -82,7 +83,7 @@ local T = {
         title = "سكريبت Adiiiiiiix",
         tabFarm = "المزرعة", tabPlayers = "لاعبين", tabServers = "سيرفرات", tabSecurity = "الحماية",
         magnetName = "مغناطيس الكوينز", magnetDesc = "ينتقل للكاش، يأخذه، ويرجعك — مضمون",
-        stealthName = "سرقة مخفية", stealthDesc = "يختبئ تحت الأرض قرب السطح ويسرق — مخفي ومضمون",
+        stealthName = "سرقة مخفية", stealthDesc = "الكود الأصلي المثبت: لمس مباشر + اختباء تحت الأرض 8.5 ستد",
         cleanName = "تنظيف أوتوماتيكي", cleanDesc = "وظيفة + مكنسة + تنظيف بضغطة واحدة",
         xoName = "XO فوز تلقائي", xoDesc = "يلعب إكس-أو بذكاء ويربح تلقائياً",
         espName = "كشف الإدارة", espDesc = "رتب الإدارة الحقيقية فوق رؤوسهم",
@@ -101,7 +102,7 @@ local T = {
         title = "Adiiiiiiix script",
         tabFarm = "FARM", tabPlayers = "PLAYERS", tabServers = "SERVERS", tabSecurity = "SECURITY",
         magnetName = "COIN MAGNET", magnetDesc = "Teleports, grabs cash, returns — guaranteed",
-        stealthName = "STEALTH GRAB", stealthDesc = "Hides just under the floor and grabs — hidden, guaranteed",
+        stealthName = "STEALTH GRAB", stealthDesc = "Original proven code: direct touch + hides 8.5 studs under floor",
         cleanName = "AUTO CLEAN", cleanDesc = "Auto job + broom + cleaning, one press",
         xoName = "XO AUTO-WIN", xoDesc = "Plays Tic-Tac-Toe smart and wins",
         espName = "STAFF ESP", espDesc = "Real HD Admin ranks above their heads",
@@ -525,25 +526,32 @@ local function findCash()
 end
 
 local function fireCash(part)
-    if not hasFPP then return end
     pcall(function()
-        local prompt = part:FindFirstChildOfClass("ProximityPrompt")
-        if prompt then
-            prompt.HoldDuration = 0
-            prompt.MaxActivationDistance = 20
-            fireproximityprompt(prompt)
+        if hasFPP then
+            local prompt = part:FindFirstChildOfClass("ProximityPrompt")
+            if prompt then
+                prompt.HoldDuration = 0
+                prompt.MaxActivationDistance = 20
+                fireproximityprompt(prompt)
+            end
         end
     end)
+    -- اللمس المباشر: يفعّل حدث Touched في السيرفر — هذه طريقة السكريبت الأجنبي المثبتة
+    if hasFTI then
+        pcall(function()
+            local _, hrp = getChar()
+            if hrp then
+                firetouchinterest(hrp, part, 0)
+                task.wait(0.04)
+                firetouchinterest(hrp, part, 1)
+            end
+        end)
+    end
 end
 
---===== 1) سرقة مخفية (النسخة المضمونة — لا يرجع حتى يحمل) =====--
-local STEALTH_DEPTH = 4.5  -- عمق الاختباء تحت الأرض (قريب من السطح ليصل للمال، ومخفي)
-
-local stealthCard, stealthSw = makeCard(farmPage, "stealthName", "stealthDesc", Color3.fromRGB(180, 120, 255), 126)
+--===== 1) سرقة مخفية (كود السكريبت الأجنبي الأصلي — كما هو) =====--
+local stealthCard, stealthSw = makeCard(farmPage, "stealthName", "stealthDesc", Color3.fromRGB(180, 120, 255), 100)
 local stealthInfo = makeCounter(stealthCard, Color3.fromRGB(180, 120, 255), 64)
-local stealthOn = false
-local stealthNoclip = nil
-local stealthAnchored = false
 
 local function renderStealth()
     if isAr() then
@@ -555,137 +563,393 @@ end
 renderStealth()
 regRenderer(renderStealth)
 
--- noclip يشتغل ويبقى حتى بعد الرجوع فوق الأرض
-local function stealthNoclipOn()
-    if stealthNoclip then return end
-    stealthNoclip = RunService.Stepped:Connect(function()
-        pcall(function()
-            local char = player.Character
-            if char then
-                for _, p in ipairs(char:GetDescendants()) do
-                    if p:IsA("BasePart") then p.CanCollide = false end
-                end
-            end
-        end)
-    end)
-end
+-- محوّل المتغيرات (تعريفات يحتاجها الكود الأصلي — لا تغيّر منطقه)
+local lp = player
+local staffFreezeEnabled = false
+local staffFreezeRadius = 50
+local staffAvoidRadius = 30
+local minCashToTP = 1
+local tpUnderFloor = true
+local underFloorDepth = 8.5
+local autoNoclipOnTP = true
+local scriptKilled = false
+local isCollectingCash = false
+local autoCollectCash = false
+local highCashAlert = false
+local descendantConn = nil
 
-local function stealthNoclipOff()
-    if stealthNoclip then
-        pcall(function() stealthNoclip:Disconnect() end)
-        stealthNoclip = nil
+local function isCashSafeFromHighStaff(cashPart)
+    if not cashPart or not cashPart.Parent then return false end
+    if not avoidOn then return true end
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= lp and p.Character then
+            local phrp = p.Character:FindFirstChild("HumanoidRootPart")
+            if phrp and (phrp.Position - cashPart.Position).Magnitude <= staffAvoidRadius then
+                local r = serverRanks[p.Name] or 0
+                local info = RANK_DATA[r]
+                if info and info.isStaff then return false end
+            end
+        end
     end
-    pcall(function()
-        local char = player.Character
-        if char then
-            for _, p in ipairs(char:GetDescendants()) do
-                if p:IsA("BasePart") and p.Name ~= "HumanoidRootPart" then
-                    p.CanCollide = true
+    return true
+end
+
+--↓↓↓↓↓ الكود الأصلي كما هو (بدون أي تغيير) ↓↓↓↓↓
+-- Helper: reads cash value from BillboardGui amountOfCash or amount label
+local function getCashAmount(cashPart)
+    if not cashPart or not cashPart.Parent then return 0 end
+    local bg = cashPart:FindFirstChild("BillboardGui")
+    if bg then
+        local numVal = bg:FindFirstChild("amountOfCash")
+        if numVal and numVal:IsA("NumberValue") and numVal.Value > 0 then
+            return numVal.Value
+        end
+        local label = bg:FindFirstChild("amount")
+        if label and label:IsA("TextLabel") and label.Text ~= "" then
+            local num = tonumber(label.Text:match("%d+"))
+            if num then return num end
+        end
+    end
+    local directNum = cashPart:FindFirstChild("amountOfCash") or cashPart:FindFirstChild("Amount") or cashPart:FindFirstChild("Value")
+    if directNum and (directNum:IsA("NumberValue") or directNum:IsA("IntValue")) and directNum.Value > 0 then
+        return directNum.Value
+    end
+    return 1
+end
+
+-- Helper to find all dropped cash matching filters
+local function findCashDrops()
+    if staffFreezeEnabled and getNearbyStaff(staffFreezeRadius) then
+        return {}
+    end
+    local drops = {}
+    local char = lp.Character
+    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+
+    local function checkDrop(child)
+        if child.Name == "Cash" and child:IsA("BasePart") and child.Parent then
+            -- Staff Avoidance Check
+            if not isCashSafeFromHighStaff(child) then
+                return
+            end
+
+            local dist = hrp and (child.Position - hrp.Position).Magnitude or 9999
+            if dist <= 7 then
+                table.insert(drops, child)
+            else
+                local amt = getCashAmount(child)
+                if amt >= minCashToTP then
+                    table.insert(drops, child)
+                end
+            end
+        end
+    end
+
+    for _, child in ipairs(workspace:GetChildren()) do
+        checkDrop(child)
+    end
+
+    local dropsFolder = workspace:FindFirstChild("Drops") or workspace:FindFirstChild("Debris")
+    if dropsFolder then
+        for _, child in ipairs(dropsFolder:GetChildren()) do
+            checkDrop(child)
+        end
+    end
+
+    return drops
+end
+
+-- Helper: temporarily disables collision on character parts
+local function enableNoclip(character)
+    local conn = RunService.Stepped:Connect(function()
+        if character and character.Parent then
+            for _, part in ipairs(character:GetDescendants()) do
+                if part:IsA("BasePart") and part.CanCollide then
+                    part.CanCollide = false
                 end
             end
         end
     end)
+    return conn
 end
 
-local function stealthSafeOff()
-    pcall(function()
-        local _, h = getChar()
-        if h and stealthAnchored then h.Anchored = false stealthAnchored = false end
-    end)
-    stealthNoclipOff()
+-- Helper: properly restores collision on character parts according to Roblox avatar physics
+local function disableNoclip(character)
+    if not character or not character.Parent then return end
+    for _, part in ipairs(character:GetDescendants()) do
+        if part:IsA("BasePart") then
+            local name = part.Name
+            -- In Roblox physics, ONLY Torso / UpperTorso / LowerTorso and Head have collision.
+            -- Limbs (arms, legs) and accessories MUST have CanCollide = false, otherwise the avatar gets stuck/frozen!
+            if name == "Torso" or name == "UpperTorso" or name == "LowerTorso" or name == "Head" then
+                part.CanCollide = true
+            else
+                part.CanCollide = false
+            end
+        end
+    end
 end
 
-stealthSw.onClick(function(s)
-    stealthOn = s
-    if not s then stealthSafeOff() end
-end)
-local stealthSpeed = SPEED_LEVELS[1]
-addSpeedRow(stealthCard, 92, 1, function(i) stealthSpeed = SPEED_LEVELS[i] end)
+-- Helper: un-jams character collision and physics state anytime
+local function unstuckCharacter()
+    local char = lp.Character
+    if not char then return end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if hrp then
+        hrp.AssemblyLinearVelocity = Vector3.zero
+        hrp.AssemblyAngularVelocity = Vector3.zero
+        hrp.CFrame = hrp.CFrame + Vector3.new(0, 0.5, 0)
+    end
+    disableNoclip(char)
+    if hum then
+        hum.PlatformStand = false
+        hum.Sit = false
+        hum:ChangeState(Enum.HumanoidStateType.GettingUp)
+        task.wait(0.04)
+        hum:ChangeState(Enum.HumanoidStateType.Running)
+    end
+end
 
-local function stealthCycle()
-    if not stealthOn then task.wait(0.4) return end
-    if getNearbyStaff(50) and avoidOn then task.wait(0.5) return end
-    local char, hrp = getChar()
-    if not hrp then task.wait(0.5) return end
+-- Teleports to cash, claims via prompt/touch until server destroys it, then returns
+local function collectCashPart(cashPart)
+    if not cashPart or not cashPart.Parent or isCollectingCash or scriptKilled then return end
+    local char = lp.Character
+    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    if not hrp or not hum then return end
 
-    local list = findCash()
-    if #list == 0 then task.wait(0.6) return end
+    if staffFreezeEnabled and getNearbyStaff(staffFreezeRadius) then
+        return
+    end
 
-    local sp = stealthSpeed
-    local origin = hrp.CFrame
-    local originY = hrp.Position.Y
+    if not isCashSafeFromHighStaff(cashPart) then
+        return
+    end
 
-    stealthNoclipOn()
+    isCollectingCash = true
 
-    for _, target in ipairs(list) do
-        if not stealthOn then break end
-        if not (target and target.Parent) then continue end
+    local success, err = pcall(function()
+        local wasSitting = hum.Sit
+        local initialCFrame = hrp.CFrame
+        local returnSeat = hum.SeatPart
 
-        local v = coins.Value
-        local underPos = target.CFrame - Vector3.new(0, STEALTH_DEPTH, 0)
-
-        pcall(function()
-            hrp.CFrame = underPos
-            hrp.Anchored = true
-            stealthAnchored = true
-        end)
-        task.wait(sp.tpWait)
-        fireCash(target)
-
-        -- الضمان الكامل: لا خروج حتى يدخل المبلغ أو يختفي الكاش
-        while stealthOn and coins.Value == v and target.Parent do
-            pcall(function()
-                local _, h3 = getChar()
-                if h3 and h3.Anchored then h3.CFrame = underPos end
-            end)
-            task.wait(sp.fireGap)
-            fireCash(target)
+        local returnCFrame = initialCFrame
+        if wasSitting and returnSeat and returnSeat.Parent then
+            returnCFrame = returnSeat.CFrame + Vector3.new(0, 2.0, 0)
+        else
+            returnCFrame = initialCFrame + Vector3.new(0, 0.2, 0)
         end
 
-        pcall(function()
-            local _, h4 = getChar()
-            if h4 then h4.Anchored = false stealthAnchored = false end
+        task.wait(0.04)
+        if not cashPart or not cashPart.Parent then
+            return
+        end
+
+        local prompt = cashPart:FindFirstChildOfClass("ProximityPrompt")
+
+        local dist = (cashPart.Position - hrp.Position).Magnitude
+
+        if dist <= 7 then
+            -- Close proximity grab
+            local start = tick()
+            while cashPart and cashPart.Parent and (tick() - start < 0.6) and not scriptKilled do
+                if prompt and prompt.Parent then
+                    fireproximityprompt(prompt)
+                end
+                firetouchinterest(hrp, cashPart, 0)
+                task.wait(0.04)
+                firetouchinterest(hrp, cashPart, 1)
+                task.wait(0.04)
+            end
+        else
+            -- Distant grab
+            local amt = getCashAmount(cashPart)
+            if amt < minCashToTP then
+                return
+            end
+
+            if wasSitting then
+                hum.Sit = false
+                task.wait(0.04)
+            end
+
+            local noclipConn = nil
+            if autoNoclipOnTP then
+                noclipConn = enableNoclip(char)
+            end
+
+            local targetCFrame
+            if tpUnderFloor then
+                targetCFrame = cashPart.CFrame - Vector3.new(0, underFloorDepth, 0)
+            else
+                targetCFrame = cashPart.CFrame + Vector3.new(0, 1.5, 0)
+            end
+
+            local start = tick()
+            while cashPart and cashPart.Parent and (tick() - start < 1.0) and not scriptKilled do
+                hrp.AssemblyLinearVelocity = Vector3.zero
+                hrp.AssemblyAngularVelocity = Vector3.zero
+                hrp.CFrame = targetCFrame
+
+                if prompt and prompt.Parent then
+                    fireproximityprompt(prompt)
+                end
+                firetouchinterest(hrp, cashPart, 0)
+                task.wait(0.04)
+                firetouchinterest(hrp, cashPart, 1)
+                task.wait(0.04)
+            end
+
+            if not scriptKilled then
+                -- 1. Stop noclip and restore proper collision
+                if noclipConn then
+                    noclipConn:Disconnect()
+                    noclipConn = nil
+                end
+                disableNoclip(char)
+
+                -- 2. Return to position with zero velocity
+                hrp.AssemblyLinearVelocity = Vector3.zero
+                hrp.AssemblyAngularVelocity = Vector3.zero
+                hrp.CFrame = returnCFrame
+
+                -- 3. Restore running state and clear platform stand
+                if hum and hum.Parent then
+                    hum.PlatformStand = false
+                    hum:ChangeState(Enum.HumanoidStateType.Running)
+                end
+
+                -- 4. If was sitting, re-seat cleanly
+                if wasSitting and returnSeat and returnSeat.Parent then
+                    task.wait(0.06)
+                    local chairPrompt = returnSeat.Parent:FindFirstChildOfClass("ProximityPrompt") or returnSeat:FindFirstChildOfClass("ProximityPrompt")
+                    local pillow = returnSeat.Parent:FindFirstChild("pillow")
+                    local pillowPrompt = pillow and pillow:FindFirstChildOfClass("ProximityPrompt")
+                    local p = chairPrompt or pillowPrompt
+                    if p then
+                        fireproximityprompt(p)
+                    end
+                end
+            else
+                if noclipConn then
+                    noclipConn:Disconnect()
+                    noclipConn = nil
+                end
+                disableNoclip(char)
+            end
+        end
+    end)
+
+    if not success then
+        warn("[MoroccoHub] Error collecting cash:", err)
+        pcall(function() disableNoclip(char) end)
+    end
+
+    isCollectingCash = false
+end
+
+local function collectAllCashDrops(drops)
+    for _, cashPart in ipairs(drops) do
+        if scriptKilled or not autoCollectCash then break end
+        if cashPart and cashPart.Parent and isCashSafeFromHighStaff(cashPart) then
+            collectCashPart(cashPart)
+            task.wait(0.12)
+        end
+    end
+end
+
+-- Monitor newly spawned cash instantly via DescendantAdded
+descendantConn = workspace.DescendantAdded:Connect(function(desc)
+    if scriptKilled then return end
+    if desc.Name == "Cash" and desc:IsA("BasePart") then
+        -- Identify dropper by nearest player within 3.5 studs at spawn time
+        task.spawn(function()
+            local spawnPos = desc.Position
+            local nearestPlayer = nil
+            local nearestDist = 3.5
+            for _, player in ipairs(Players:GetPlayers()) do
+                if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+                    local d = (player.Character.HumanoidRootPart.Position - spawnPos).Magnitude
+                    if d < nearestDist then
+                        nearestDist = d
+                        nearestPlayer = player
+                    end
+                end
+            end
+            if nearestPlayer then
+                desc:SetAttribute("DropperName", nearestPlayer.Name)
+            end
+
+            local amt = getCashAmount(desc)
+            if highCashAlert and amt >= 100 then
+                pcall(function()
+                    Rayfield:Notify({
+                        title = "High Cash Drop Alert!",
+                        content = string.format("%d DH dropped near %s!", amt, nearestPlayer and nearestPlayer.DisplayName or "someone"),
+                    })
+                end)
+            end
         end)
 
-        if coins.Value > v then
+        if autoCollectCash and not isCollectingCash then
+            task.spawn(function()
+                task.wait(0.05)
+                if staffFreezeEnabled and getNearbyStaff(staffFreezeRadius) then return end
+                if desc and desc.Parent and isCashSafeFromHighStaff(desc) then
+                    local char = lp.Character
+                    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+                    local dist = hrp and (desc.Position - hrp.Position).Magnitude or 9999
+                    local amt = getCashAmount(desc)
+                    if dist <= 7 or amt >= minCashToTP then
+                        collectCashPart(desc)
+                    end
+                end
+            end)
+        end
+    end
+end)
+--↑↑↑↑↑ نهاية الكود الأصلي ↑↑↑↑↑
+
+-- ربط زر البطاقة بالكود الأصلي
+stealthSw.onClick(function(s)
+    autoCollectCash = s
+    if not s then
+        scriptKilled = true
+        task.wait(0.2)
+        pcall(unstuckCharacter)
+        scriptKilled = false
+    end
+end)
+
+-- عداد يتبع دخول المال أثناء عمل الأداة
+local lastCoinsVal = coins.Value
+coins.Changed:Connect(function(newVal)
+    pcall(function()
+        if autoCollectCash and newVal > lastCoinsVal then
             cashTotal += 1
-            earnedTotal += (coins.Value - v)
+            earnedTotal += (newVal - lastCoinsVal)
             renderStealth()
         end
-    end
-
-    -- الرجوع فقط بعد الانتهاء من الأخذ
-    pcall(function()
-        local _, h5 = getChar()
-        if h5 then
-            h5.Anchored = false
-            stealthAnchored = false
-            h5.CFrame = origin
-            h5.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
-        end
+        lastCoinsVal = newVal
     end)
-    task.wait(0.15)
-    stealthNoclipOff()
-
-    -- حارس الفراغ
-    pcall(function()
-        local _, h6 = getChar()
-        if h6 and h6.Position.Y < originY - 40 then
-            stealthNoclipOn()
-            h6.CFrame = origin
-            h6.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
-            task.wait(0.15)
-            stealthNoclipOff()
-        end
-    end)
-
-    task.wait(sp.cooldown)
-end
-task.spawn(function() while true do pcall(stealthCycle) task.wait(0.1) end end)
+end)
 
 player.CharacterAdded:Connect(function()
-    stealthAnchored = false
-    stealthNoclipOff()
+    task.wait(0.5)
+    pcall(unstuckCharacter)
+end)
+
+-- حلقة التشغيل الرئيسية للكود الأصلي
+task.spawn(function()
+    while true do
+        pcall(function()
+            if autoCollectCash and not isCollectingCash then
+                collectAllCashDrops(findCashDrops())
+            end
+        end)
+        task.wait(0.5)
+    end
 end)
 
 --===== 2) تنظيف أوتوماتيكي =====--
