@@ -861,146 +861,169 @@ end
 
 
 -- ==========================================
--- TIER 3: CLEANING JOB (AUTO-TP & SWEEP)
+-- TIER 3: CLEANING ENGINE (STAND-OVER & CLICK)
+-- يشتغل مع "تنظيف الأوساخ تلقائياً [P3]" (يقف فوق البقة)
+-- و"تجهيز المكنسة تلقائياً" (التنظيف من مكانك)
 -- ==========================================
+do
+    local cleaning = false
+    local savedCF = nil
+    local cleanedCount = 0
+    local hasClicker = typeof(fireclickdetector) == "function"
+    local dirtSignal = nil
 
-local function getActiveDirtFolder()
-    local cj = workspace:FindFirstChild("CleaningJob")
-    if not cj and workspace:FindFirstChild("GenericModels") then
-        cj = workspace.GenericModels:FindFirstChild("CleaningJob")
+    -- إعادة توصيل مراقبي المكافأة (يستعملهما cleanupAll)
+    if rewardNotify then
+        rewardConn = rewardNotify.OnClientEvent:Connect(function()
+            lastCleanTick = tick()
+        end)
     end
-    if cj then
-        return cj:FindFirstChild("ActiveDirt")
-    end
-    return nil
-end
-
-local function getDirtSpots()
-    local folder = getActiveDirtFolder()
-    if not folder then return {} end
-    local spots = {}
-    for _, child in ipairs(folder:GetChildren()) do
-        if child:IsA("BasePart") and child.Name:match("^DirtSpot_%d+$") then
-            table.insert(spots, child)
+    do
+        local c = lp:FindFirstChild("leaderstats") and lp.leaderstats:FindFirstChild("Coins")
+        if c then
+            coinsConn = c.Changed:Connect(function()
+                lastCleanTick = tick()
+            end)
         end
     end
-    return spots
-end
 
-local function equipBroom()
-    local char = lp.Character
-    if not char then return false end
-    if char:FindFirstChild("Broom") then return true end
-    local broom = lp.Backpack:FindFirstChild("Broom")
-    if broom and char:FindFirstChildOfClass("Humanoid") then
-        char.Humanoid:EquipTool(broom)
-        return true
+    local function getDirtFolder()
+        local tz = workspace:FindFirstChild("GenericModels") and workspace.GenericModels:FindFirstChild("TaskZone")
+        local ad = tz and tz:FindFirstChild("ActiveDirt")
+        if ad then return ad end
+        local cj = workspace:FindFirstChild("CleaningJob")
+        if cj then return cj:FindFirstChild("ActiveDirt") end
+        return nil
     end
-    return false
-end
 
-local function getClosestDirtSpot()
-    local spots = getDirtSpots()
-    local char = lp.Character
-    if not char then return nil end
-    local hrp = char:FindFirstChild("HumanoidRootPart")
-    if not hrp then return nil end
+    local function getHRP()
+        local c = lp.Character
+        return c and c:FindFirstChild("HumanoidRootPart")
+    end
 
-    local closest = nil
-    local minDist = math.huge
-    for _, spot in ipairs(spots) do
-        if spot and spot.Parent then
-            local dist = (spot.Position - hrp.Position).Magnitude
-            if dist < minDist then
-                minDist = dist
-                closest = spot
+    local function noclipOn(char)
+        for _, p in ipairs(char:GetDescendants()) do
+            if p:IsA("BasePart") then p.CanCollide = false end
+        end
+    end
+    local function noclipOff(char)
+        for _, p in ipairs(char:GetDescendants()) do
+            if p:IsA("BasePart") then
+                p.CanCollide = (p.Name == "UpperTorso" or p.Name == "LowerTorso" or p.Name == "Torso")
             end
         end
     end
-    return closest, minDist
-end
 
-if rewardNotify then
-    rewardConn = rewardNotify.OnClientEvent:Connect(function()
-        lastCleanTick = tick()
-    end)
-end
-
-local coins = lp:FindFirstChild("leaderstats") and lp.leaderstats:FindFirstChild("Coins")
-if coins then
-    coinsConn = coins.Changed:Connect(function()
-        lastCleanTick = tick()
-    end)
-end
-
-local function runSweepingStep()
-    if isCollectingCash or scriptKilled then return end
-    if staffFreezeEnabled and getNearbyStaff(staffFreezeRadius) then return end
-    local char = lp.Character
-    local hrp = char and char:FindFirstChild("HumanoidRootPart")
-    local hum = char and char:FindFirstChildOfClass("Humanoid")
-    if not hrp or not hum then return end
-
-    if hum.Sit then
-        hum.Sit = false
-        task.wait(0.1)
+    local function clickSpot(spot)
+        -- المحاولة 1: ريموت التنظيف المباشر
+        if __r26 then
+            pcall(function() __r26:FireServer(spot.Name) end)
+            task.wait(0.3)
+            if not spot.Parent then return true end
+        end
+        -- المحاولة 2: النقر على ClickDetector
+        local cd = spot:FindFirstChildOfClass("ClickDetector")
+        if cd and hasClicker then
+            for i = 1, 3 do
+                pcall(function() fireclickdetector(cd) end)
+                task.wait(0.12)
+                if not spot.Parent then break end
+            end
+        end
+        local t0 = tick()
+        while spot.Parent and tick() - t0 < 2.5 do task.wait(0.1) end
+        return not spot.Parent
     end
 
-    if autoSweep then
-        equipBroom()
+    local busySpots = {}
+    local function processSpot(spot)
+        if busySpots[spot] then return end
+        busySpots[spot] = true
+        task.spawn(function()
+            local ok = pcall(function()
+                if not (autoTP or autoSweep) then return end
+                if isCollectingCash or scriptKilled then return end
+                if staffFreezeEnabled and getNearbyStaff(staffFreezeRadius) then return end
+                local hrp = getHRP()
+                if not hrp then return end
+                if autoTP then
+                    if not savedCF then savedCF = hrp.CFrame end
+                    local char = lp.Character
+                    if char then noclipOn(char) end
+                    hrp.CFrame = CFrame.new(spot.Position + Vector3.new(0, 3.2, 0))
+                    hrp.AssemblyLinearVelocity = Vector3.zero
+                    task.wait(0.12)
+                end
+                if clickSpot(spot) then
+                    cleanedCount = cleanedCount + 1
+                    currentActivity = "Sweeping Dirt (" .. cleanedCount .. ")"
+                end
+            end)
+            busySpots[spot] = nil
+        end)
     end
 
-    if autoTP then
-        local spot = getClosestDirtSpot()
-        if spot and spot.Parent and not scriptKilled and not isCollectingCash then
-            hrp.CFrame = CFrame.new(spot.Position + Vector3.new(0, 2.5, 0))
+    local function hookDirt()
+        if dirtSignal then dirtSignal:Disconnect(); dirtSignal = nil end
+        local folder = getDirtFolder()
+        if folder then
+            dirtSignal = folder.ChildAdded:Connect(function(child)
+                task.wait(0.1)
+                if child:IsA("BasePart") then processSpot(child) end
+            end)
+        end
+    end
+    hookDirt()
 
-            local spotStartTime = tick()
-            while spot and spot.Parent and autoTP and not scriptKilled and not isCollectingCash do
-                if staffFreezeEnabled and getNearbyStaff(staffFreezeRadius) then
-                    break
-                end
-
-                if autoCollectCash and isCollectingCash then
-                    break
-                end
-
-                if autoTicTacToe then
-                    local _, _, hasOpp = findBestTicTacToeBoard()
-                    if hasOpp then
-                        break
+    task.spawn(function()
+        while true do
+            if scriptKilled then return end
+            if autoTP or autoSweep then
+                if not cleaning then cleaning = true hookDirt() end
+                if not (staffFreezeEnabled and getNearbyStaff(staffFreezeRadius)) then
+                    local folder = getDirtFolder()
+                    if folder then
+                        for _, d in ipairs(folder:GetChildren()) do
+                            if scriptKilled then return end
+                            if not (autoTP or autoSweep) then break end
+                            if isCollectingCash then break end
+                            if d:IsA("BasePart") and d.Name:match("^DirtSpot_%d+$") then
+                                processSpot(d)
+                                task.wait(0.05)
+                            end
+                        end
                     end
                 end
-
-                local timeSinceLast = tick() - lastCleanTick
-                if timeSinceLast >= SERVER_COOLDOWN and autoSweep and __r26 then
-                    __r26:FireServer(spot.Name)
-                    task.wait(0.3)
-                else
-                    task.wait(0.1)
+                task.wait(0.5)
+            else
+                if cleaning then
+                    cleaning = false
+                    local char = lp.Character
+                    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+                    if char and hrp and savedCF then
+                        noclipOn(char)
+                        hrp.CFrame = savedCF
+                        hrp.AssemblyLinearVelocity = Vector3.zero
+                        task.wait(0.08)
+                        noclipOff(char)
+                        local hum = char:FindFirstChildOfClass("Humanoid")
+                        if hum then
+                            pcall(function() hum:ChangeState(Enum.HumanoidStateType.Running) end)
+                        end
+                    end
+                    savedCF = nil
                 end
-
-                if tick() - spotStartTime > 12 then
-                    break
-                end
-            end
-            task.wait(0.15)
-        else
-            task.wait(0.5)
-        end
-    else
-        local spot, dist = getClosestDirtSpot()
-        if spot and spot.Parent and dist <= 10 and autoSweep then
-            local timeSinceLast = tick() - lastCleanTick
-            if timeSinceLast >= SERVER_COOLDOWN and __r26 then
-                __r26:FireServer(spot.Name)
-                lastCleanTick = tick()
-                task.wait(0.4)
+                task.wait(0.5)
             end
         end
-    end
+    end)
+
+    lp.CharacterAdded:Connect(function()
+        savedCF = nil
+        task.wait(0.3)
+        hookDirt()
+    end)
 end
-
 
 -- ==========================================
 -- MASTER PRIORITY CONTROLLER
@@ -1056,8 +1079,7 @@ task.spawn(function()
 
         if autoTP or autoSweep then
             currentActivity = "Sweeping Dirt"
-            runSweepingStep()
-            task.wait(0.1)
+            task.wait(0.5)
             continue
         end
 
@@ -1751,7 +1773,6 @@ end)
 
 addToggle(farmPage, "تجهيز المكنسة تلقائياً", false, function(val)
     autoSweep = val
-    if val then equipBroom() end
 end)
 
 addButton(farmPage, "اجمع الكاش الآن", Color3.fromRGB(0, 140, 80), function()
