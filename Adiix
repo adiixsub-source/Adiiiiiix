@@ -862,7 +862,8 @@ end
 
 -- ==========================================
 -- TIER 3: CLEANING ENGINE (Sequential Chain) 👕
--- يلبس الزي ← ينتقل لأقرب وسخة ← ينظفها ← ينتقل للتالية تلقائياً
+-- يلبس الزي ← يجد الوسخ ← ينتقل لأقرب وسخة ← ينظفها ← ينتقل للتالية
+-- ✅ مُصلح: بحث شامل عن الوسخ + تجربة CleanDirtEvent و __r26 معاً
 -- ==========================================
 do
     local cleaning = false
@@ -893,12 +894,13 @@ do
         end
     end
 
+    -- ✅ البحث عن مجلد الوسخ — بحث شامل في كل الـ workspace
     local function getDirtFolder()
-        local tz = workspace:FindFirstChild("GenericModels") and workspace.GenericModels:FindFirstChild("TaskZone")
-        local ad = tz and tz:FindFirstChild("ActiveDirt")
-        if ad then return ad end
-        local cj = workspace:FindFirstChild("CleaningJob")
-        if cj then return cj:FindFirstChild("ActiveDirt") end
+        local names = {"ActiveDirt", "Dirt", "DirtFolder", "Dirts", "Trash"}
+        for _, n in ipairs(names) do
+            local f = workspace:FindFirstChild(n, true)
+            if f then return f end
+        end
         return nil
     end
 
@@ -920,15 +922,24 @@ do
         end
     end
 
-    -- نظّف وسخة واحدة حتى تختفي (حد أقصى 3 ثوان)
+    -- ✅ نظّف وسخة واحدة حتى تختفي — يجرب CleanDirtEvent ثم __r26 ثم ClickDetector
     local function cleanSpot(spot)
         local t0 = tick()
         while spot.Parent and tick() - t0 < 3 do
+            -- المحاولة 1: CleanDirtEvent (الذي اشتغل في الاختبار المستقل)
+            local cdEvent = ReplicatedStorage:FindFirstChild("CleanDirtEvent", true)
+            if cdEvent then
+                pcall(function() cdEvent:FireServer(spot.Name ~= "" and spot.Name or spot) end)
+            end
+            task.wait(0.25)
+            if not spot.Parent then return true end
+            -- المحاولة 2: __r26
             if __r26 then
                 pcall(function() __r26:FireServer(spot.Name) end)
             end
             task.wait(0.25)
             if not spot.Parent then return true end
+            -- المحاولة 3: ClickDetector
             local cd = spot:FindFirstChildOfClass("ClickDetector")
             if cd and hasClicker then
                 pcall(function() fireclickdetector(cd) end)
@@ -1775,7 +1786,7 @@ addToggle(farmPage, "لعب إكس-أو تلقائي [P2]", false, function(val)
     Window:Notify({ title = "Tic-Tac-Toe", content = val and "Auto Tic-Tac-Toe enabled!" or "Auto Tic-Tac-Toe disabled." })
 end)
 
-addToggle(farmPage, "تنظيف الأوساخ تلقائي [P3]", false, function(val)
+addToggle(farmPage, "تنظيف الأوساخ تلقائياً [P3]", false, function(val)
     autoTP = val
     Window:Notify({ title = "Auto-Dirt", content = val and "Auto-TP Dirt enabled!" or "Auto-TP Dirt disabled." })
 end)
